@@ -1,0 +1,14 @@
+{
+  "profiles": {
+    "default": {
+      "siteId": "223755",
+      "logLevel": "NONE",
+      "migrations": {
+        "directory": "./migrations",
+        "modelApiKey": "schema_migration",
+        "template": "",
+        "tsconfig": ""
+      }
+    }
+  }
+}
