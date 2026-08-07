@@ -2,8 +2,8 @@ import { performRequest } from '@/lib/datocms';
 import { StructuredText } from 'react-datocms';
 
 const PAGE_CONTENT_QUERY = `
-  query {
-    article {
+  query PageQuery($locale: SiteLocale!) {
+    article(locale: $locale) {
       title
       description {
         value
@@ -12,8 +12,12 @@ const PAGE_CONTENT_QUERY = `
   }
 `;
 
-export default async function Home() {
-  const data = await performRequest(PAGE_CONTENT_QUERY);
+export default async function Home({ params }) {
+  const { lang } = await params;
+
+  const data = await performRequest(PAGE_CONTENT_QUERY, {
+    variables: { locale: lang },
+  });
 
   return (
     <main style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
