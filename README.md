@@ -110,10 +110,9 @@
 
 ---
 
-## 4. Modellazione Dati (Model & Content) e Rendering in Next.js
+## 4. Modellazione Dati (Model & Content)
 
 ### QUI ABBIAMO 2 POSSIBILI STRADE:
-
 
 ## 4.1. Modellazione Dati (Model & Content) tramite dashboard
 
@@ -141,7 +140,6 @@ npx datocms migrations:new create_article_model
 
 Il comando crea un file nella cartella `./migrations/` (es. `migrations/1786028804_createArticleModel.js`). Modificare il file inserendo la logica desiderata via SDK:
 
-
 ```javascript
 'use strict';
 
@@ -167,7 +165,6 @@ module.exports = async (client) => {
   });
 };
 ```
-
 
 ### Esecuzione delle Migrazioni
 
@@ -199,6 +196,7 @@ Una volta verificate le modifiche nella Sandbox, promuoverla ad ambiente primari
 npx datocms environments:promote main-post-migrations
 ```
 
+---
 
 ## 5. Mostrare il content presente nella dashboard nel progetto Next.js (`src/app/page.js`)
 
@@ -214,7 +212,7 @@ npx datocms environments:promote main-post-migrations
   * `const data = await performRequest(PAGE_CONTENT_QUERY)`: Chiamata asincrona eseguita lato server (Server Component di Next.js) prima dell'invio dell'HTML al browser. Recupera i dati da DatoCMS autenticandosi con il token salvato in `.env.local`.
   * `<h1>{data?.article?.title || 'Nessun titolo trovato'}</h1>`: Prende il titolo presente nella Dashboard (nello schema `title` + il suo contenuto di tipo Single-line String) e lo mostra in pagina. L'operatore fallback (`||`) mostra un testo alternativo se il campo è vuoto.
   * `{data?.article?.description && (...)}`: Controllo di sicurezza e rendering condizionale tramite optional chaining (`?.`) e operatore logico (`&&`). Verifica che la descrizione esista prima di provare a renderizzarla, evitando errori a runtime se il campo non è popolato.
-  * `<StructuredText data={data.article.description} />`: Passa l'oggetto JSON del campo `description` al componente di `react-datocms`, che lo converte automaticamente nei tag HTML corrispondenti (`<p>`, `<strong>`, ecc.).
+  * `<StructuredText data="{data.article.description}"/>`: Passa l'oggetto JSON del campo `description` al componente di `react-datocms`, che lo converte automaticamente nei tag HTML corrispondenti (`<p>`, `<strong>`, ecc.).
 
 #### Codice di `src/app/page.js`:
 
@@ -244,15 +242,15 @@ export default async function Home() {
       
       {data?.article?.description && (
         <div style={{ marginTop: '1rem' }}>
-          <StructuredText data="{data.article.description}"/>
+          <StructuredText data={data.article.description} />
         </div>
       )}
     </main>
   );
 }
+```
 
 ---
-
 
 ## 6. Avvio Server di Sviluppo
 
