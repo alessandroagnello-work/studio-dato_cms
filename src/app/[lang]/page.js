@@ -3,7 +3,7 @@ import { StructuredText } from 'react-datocms';
 
 const PAGE_CONTENT_QUERY = `
   query PageQuery($locale: SiteLocale!) {
-    article(locale: $locale) {
+    article(locale: $locale, filter: { slug: { eq: "home" } }) {
       title
       description {
         value
