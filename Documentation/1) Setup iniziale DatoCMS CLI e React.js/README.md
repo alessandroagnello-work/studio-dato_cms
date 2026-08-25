@@ -10,7 +10,7 @@
 ## 1. Accesso e Setup Progetto DatoCMS
 
 1. Registrarsi sul sito ufficiale di [DatoCMS](https://www.datocms.com/).
-2. Creare un nuovo progetto scegliendo il template **Blank** (per iniziare totalmente da zero), definendo il nome del progetto (es. `Studio datocms`), la lingua e il colore del tema.
+2. Creare un nuovo progetto scegliendo il template **Blank** (per iniziare totalmente da zero), definendo il nome del progetto (es. `Corporate Web App`), la lingua e il colore del tema.
 3. Cliccare sul nuovo progetto creato e poi sul pulsante **Enter project** per accedere alla Dashboard di amministrazione.
 
 ---
@@ -21,13 +21,13 @@
 1. Creare la struttura dell'applicazione Next.js da terminale:
 
    ```bash
-   npx create-next-app@latest studio-dato_cms
+   npx create-next-app@latest company-datocms-app
    ```
 
 2. Entrare nella cartella del progetto:
 
    ```bash
-   cd studio-dato_cms
+   cd company-datocms-app
    ```
 
 3. Installare la CLI di DatoCMS come dipendenza di sviluppo locale:
@@ -35,7 +35,6 @@
    ```bash
    npm install --save-dev datocms
    ```
-
 
 ### Autenticazione e Linking CLI
 
@@ -51,7 +50,7 @@
    ```
 
    * Selezionare l'opzione: `Log in with browser and select a project`
-   * Scegliere il progetto: `Studio datocms`
+   * Scegliere il progetto: `Corporate Web App`
    * Selezionare `NONE` come livello di log per generare il file `datocms.config.json`.
 
 6. Verificare la connessione e stampare gli ambienti attivi:
@@ -90,7 +89,7 @@
    npm install @datocms/cda-client react-datocms
    ```
 
-2. Creare il file `.env.local` nella radice di progetto con il token API recuperato da Dashboard -> Project Settings -> API Tokens -> Read-only API token:
+2. Creare il file `.env.local` nella radice di progetto con il token API recuperato da **Dashboard -> Project Settings -> API Tokens -> Read-only API token**:
 
    ```env
    NEXT_DATOCMS_API_TOKEN=tuo_read_only_api_token_qui
@@ -112,46 +111,45 @@
 
 ## 4. Modellazione Dati (Model & Content)
 
-### QUI ABBIAMO 2 POSSIBILI STRADE:
+### 4.1 Modellazione Dati tramite Dashboard
 
-## 4.1. Modellazione Dati (Model & Content) tramite dashboard
-
-### Creazione dello Schema (Model)
+#### Creazione dello Schema (Model)
 1. Dalla dashboard di DatoCMS, accedere a **Schema** e cliccare su **Create new model**.
-2. Inserire il nome `Article bello` nel campo Name (Model ID generato: `article`).
+2. Inserire il nome `Content` nel campo Name (Model ID generato: `content`).
 3. Cliccare su **Add new field**, selezionare **Single-line string**, impostare Name `Title` (Field ID: `title`) e salvare.
 4. Cliccare su **Add new field**, selezionare **Structured Text**, impostare Name `description` (Field ID: `description`) e salvare.
 
-### Inserimento del Content
+#### Inserimento del Content
 1. Spostarsi nella sezione **Content** nel menu in alto.
-2. Cliccare su **Article bello** e poi su **New record**.
-3. Compilare `Title` (es. *pincopallino*) e `description` (es. *questa è una descrizione*).
+2. Cliccare su **Content** e poi su **New record**.
+3. Compilare `Title` (es. *Titolo Aziendale*) e `description` (es. *Descrizione del contenuto aziendale*).
 4. Cliccare **Save** e poi **Publish**.
 
-## 4.2. Modellazione Dati (Model & Content) tramite CLI
+---
 
-### Creare lo Script di Migrazione
+### 4.2 Modellazione Dati tramite CLI
 
+#### Creare lo Script di Migrazione
 Generare un nuovo script da terminale:
 
 ```bash
-npx datocms migrations:new create_article_model
+npx datocms migrations:new create_content_model
 ```
 
-Il comando crea un file nella cartella `./migrations/` (es. `migrations/1786028804_createArticleModel.js`). Modificare il file inserendo la logica desiderata via SDK:
+Il comando crea un file nella cartella `./migrations/` (es. `migrations/1786028804_createContentModel.js`). Modificare il file inserendo la logica desiderata via SDK:
 
 ```javascript
 'use strict';
 
 module.exports = async (client) => {
   // 1. Creazione del Modello (usare una api_key univoca per evitare duplicati)
-  const articleModel = await client.itemTypes.create({
-    name: 'Article Nuovo',
-    api_key: 'article_nuovo',
+  const contentModel = await client.itemTypes.create({
+    name: 'Content',
+    api_key: 'content',
   });
 
   // 2. Creazione del Campo Title
-  await client.fields.create(articleModel, {
+  await client.fields.create(contentModel, {
     label: 'Title',
     api_key: 'title',
     field_type: 'string',
@@ -160,14 +158,13 @@ module.exports = async (client) => {
 
   // 3. Creazione di un Record iniziale
   await client.items.create({
-    item_type: articleModel,
-    title: 'My first article!',
+    item_type: contentModel,
+    title: 'Primo contenuto aziendale',
   });
 };
 ```
 
-### Esecuzione delle Migrazioni
-
+#### Esecuzione delle Migrazioni
 Applicare le migrazioni pendenti sullo schema cloud:
 
 ```bash
@@ -176,9 +173,8 @@ npx datocms migrations:run
 
 > **Nota:** DatoCMS crea automaticamente un ambiente Sandbox di isolamento (es. `main-post-migrations`) e applica lo script lì per proteggere l'ambiente primario (`main`).
 
-### Risoluzione Errori Sandbox Bloccata
-
-Se lo script fallisce (es. `VALIDATION_UNIQUENESS` per `api_key` duplicata), l'ambiente sandbox resta aperto e bloccato.
+#### Risoluzione Errori Sandbox Bloccata
+Se lo script fallisce (es. `VALIDATION_UNIQUENESS` per `api_key` duplicata), l'ambiente sandbox resta aperto e bloccato:
 1. Eliminare l'ambiente sandbox bloccato:
    ```bash
    npx datocms environments:destroy main-post-migrations
@@ -189,8 +185,7 @@ Se lo script fallisce (es. `VALIDATION_UNIQUENESS` per `api_key` duplicata), l'a
    npx datocms migrations:run
    ```
 
-### Promozione dell'Ambiente Sandbox in Produzione
-
+#### Promozione dell'Ambiente Sandbox in Produzione
 Una volta verificate le modifiche nella Sandbox, promuoverla ad ambiente primario (`main`):
 ```bash
 npx datocms environments:promote main-post-migrations
@@ -198,23 +193,23 @@ npx datocms environments:promote main-post-migrations
 
 ---
 
-## 5. Mostrare il content presente nella dashboard nel progetto Next.js (`src/app/page.js`)
+## 5. Mostrare il Content nel Progetto Next.js (`src/app/page.js`)
 
-### Per mostrare il contenuto presente nella dashboard nella pagina, creiamo in src/app la nostra page.js:
+Per mostrare il contenuto presente nella dashboard nella pagina iniziale (struttura monolingua di base), creiamo o aggiorniamo il file `src/app/page.js`:
 
 * **Query GraphQL (`PAGE_CONTENT_QUERY`)**:
   * `query`: Esegue la chiamata per recuperare i dati dei modelli presenti nella dashboard.
-    * `article`: Chiama il Model ID creato nello Schema.
+    * `content`: Chiama il Model ID generico creato nello Schema.
       * `title`: Recupera la stringa del titolo.
       * `description { value }`: Estrae la struttura dati JSON (AST) necessaria per lo Structured Text.
 
 * **Logica di Rendering (`Home`)**:
-  * `const data = await performRequest(PAGE_CONTENT_QUERY)`: Chiamata asincrona eseguita lato server (Server Component di Next.js) prima dell'invio dell'HTML al browser. Recupera i dati da DatoCMS autenticandosi con il token salvato in `.env.local`.
-  * `<h1>{data?.article?.title || 'Nessun titolo trovato'}</h1>`: Prende il titolo presente nella Dashboard (nello schema `title` + il suo contenuto di tipo Single-line String) e lo mostra in pagina. L'operatore fallback (`||`) mostra un testo alternativo se il campo è vuoto.
-  * `{data?.article?.description && (...)}`: Controllo di sicurezza e rendering condizionale tramite optional chaining (`?.`) e operatore logico (`&&`). Verifica che la descrizione esista prima di provare a renderizzarla, evitando errori a runtime se il campo non è popolato.
-  * `<StructuredText data="{data.article.description}"/>`: Passa l'oggetto JSON del campo `description` al componente di `react-datocms`, che lo converte automaticamente nei tag HTML corrispondenti (`<p>`, `<strong>`, ecc.).
+  * `const data = await performRequest(PAGE_CONTENT_QUERY)`: Chiamata asincrona eseguita lato server (Server Component) prima dell'invio dell'HTML al browser.
+  * `<h1>{data?.content?.title || 'Nessun titolo trovato'}</h1>`: Mostra il titolo con valore di fallback in caso di dato mancante.
+  * `{data?.content?.description && (...)}`: Rendering condizionale per verificare che la descrizione esista prima di provare a renderizzarla.
+  * `<StructuredText data={data.content.description} />`: Componente di `react-datocms` che converte l'oggetto JSON in tag HTML.
 
-#### Codice di `src/app/page.js`:
+### Codice Sorgente `src/app/page.js`
 
 ```javascript
 import { performRequest } from '@/lib/datocms';
@@ -223,7 +218,7 @@ import { StructuredText } from 'react-datocms';
 // Query GraphQL
 const PAGE_CONTENT_QUERY = `
   query {
-    article {
+    content {
       title
       description {
         value
@@ -232,17 +227,17 @@ const PAGE_CONTENT_QUERY = `
   }
 `;
 
-// Logica di Rendering
+// Logica di Rendering (Server Component)
 export default async function Home() {
   const data = await performRequest(PAGE_CONTENT_QUERY);
 
   return (
     <main style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
-      <h1>{data?.article?.title || 'Nessun titolo trovato'}</h1>
+      <h1>{data?.content?.title || 'Nessun titolo trovato'}</h1>
       
-      {data?.article?.description && (
+      {data?.content?.description && (
         <div style={{ marginTop: '1rem' }}>
-          <StructuredText data={data.article.description} />
+          <StructuredText data="{data.content.description}"/>
         </div>
       )}
     </main>
@@ -255,7 +250,9 @@ export default async function Home() {
 ## 6. Avvio Server di Sviluppo
 
 Avviare l'applicazione Next.js per verificare il recupero dati:
+
 ```bash
 npm run dev
 ```
+
 Accedere a `http://localhost:3000` per visualizzare i contenuti sincronizzati in tempo reale da DatoCMS.

@@ -1,53 +1,59 @@
-# Gestire il sito in multilingua, con selettore lingua
+# Guida Tecnica: Gestione Multilingua (i18n) e Selettore Lingua (Next.js 16 + DatoCMS)
 
-## Riferimenti Ufficiali
-
-* **DatoCMS GraphQL Localization:** https://www.datocms.com/docs/content-delivery-api/localization
-* **Next.js App Router Internationalization (i18n):** https://nextjs.org/docs/app/building-your-application/routing/internationalization
-* **Next.js Dynamic Routes (`[slug]`):** https://nextjs.org/docs/app/building-your-application/routing/dynamic-routes
+Documentazione per implementare l'internazionalizzazione nativa in Next.js 16 (App Router) tramite la rotta dinamica `[lang]`, sincronizzando le traduzioni dei campi localizzati di DatoCMS e la cache delle chiamate GraphQL.
 
 ---
-
-## 0. Segui prima i passaggi nella folder "Realizzare un menu di navigazione e mostrarlo sul sito NextJS"
 
 ## 1. Configurazione DatoCMS
 
-### Creazione Schema e Attivazione Multilingua
-1. **Configurazione Lingue Progetto:**
-   * **Configuration** → **Locales & Timezone** → Aggiungere `Italian (it)` come lingua principale e `English (en)` come lingua secondaria.
-2. **Creazione Modello `Menu Item`:**
-   * **Schema** → **Create new model** → Nome: `Menu Item` (ID: `menu_item`).
-   * **Presentation** → **Ordering / Sort order** → Impostare **Manual (drag and drop)**.
-3. **Campi e Localizzazione:**
-   * Campo **Label** (Single-line string, Field ID: `label`): Attivare **Enable localization on this field?**.
-   * Campo **URL** (Single-line string, Field ID: `url`): Attivare **Enable localization on this field?**.
+### 1.1 Attivazione Locales nel Progetto
+1. Accedere alla Dashboard di DatoCMS.
+2. Navigare in **Configuration** → **Locales & Timezone**.
+3. Aggiungere `Italian (it)` come lingua principale (Default locale) e `English (en)` come lingua secondaria.
 
-### Inserimento Traduzioni (Content)
-* **Record 1 (Home):**
-  * `IT`: Label = `Home` | URL = `/it`
-  * `EN`: Label = `Home` | URL = `/en`
-* **Record 2 (Chi siamo / About us):**
-  * `IT`: Label = `Chi siamo` | URL = `/it/chi-siamo`
-  * `EN`: Label = `About us` | URL = `/en/about-us`
+### 1.2 Localizzazione del Modello `Menu Item`
+1. Accedere a **Schema** → **Menu Item** (`menu_item`).
+2. Selezionare il campo **Label** (`label`), cliccare **Edit field** e spuntare **Enable localization on this field?**.
+3. Selezionare il campo **URL** (`url`), cliccare **Edit field** e spuntare **Enable localization on this field?**.
+4. Salvare le modifiche al modello.
+
+### 1.3 Inserimento delle Traduzioni nei Record (Content)
+Nella sezione **Content** → **Menu Item**, compilare i campi per ciascuna lingua:
+
+| Record | Lingua | Label | URL |
+| :--- | :--- | :--- | :--- |
+| **Record 1 (Home)** | `IT` | `Home` | `/it` |
+| | `EN` | `Home` | `/en` |
+| **Record 2 (Chi siamo)** | `IT` | `Chi siamo` | `/it/chi-siamo` |
+| | `EN` | `About us` | `/en/about-us` |
 
 ---
 
-## 2. Gestione lingua pagina nel progetto NextJS
+## 2. Spiegazione dei Concetti Dati e Caching
 
-### Modifica (`src/app/layout.js`)
+### 2.1 Il Tipo `SiteLocale!` in GraphQL
+DatoCMS genera automaticamente l'enum `SiteLocale` contenente tutte le lingue attive nel pannello (es. `it`, `en`). Passando la variabile `$locale: SiteLocale!` nelle query, il CMS restituirà automaticamente i valori localizzati del record per la lingua richiesta.
 
-1. **Aggiunta del nuovo importer cache per evitare riusi delle chiamate**
+### 2.2 Deduplicazione delle Richieste con React `cache()`
+Poiché sia `generateMetadata` che il componente `LocalizedLayout` richiedono i dati del layout (`_site` e `allMenuItems`), avvolgiamo la funzione di fetch dentro `cache()` di React. In questo modo, Next.js esegue un'unica chiamata HTTP a DatoCMS per singola richiesta di pagina, condividendo i dati recuperati.
+
+### 2.3 Gestione Asincrona dei `params` in Next.js 16
+In Next.js 16, la prop `params` fornita a layout e pagine è una Promise. È necessario risolverla tramite `await params` per estrarre la lingua corrente (`const { lang } = await params;`).
+
+---
+
+## 3. Implementazione del Codice Sorgente (`src/app/[lang]/layout.js`)
+
+Ecco il codice completo per gestire layout, favicon, voci di menù tradotte e selettore lingua:
 
 ```javascript
-
+import { performRequest } from '@/lib/datocms';
+import { toNextMetadata } from 'react-datocms/seo';
 import { cache } from 'react';
+import Link from 'next/link';
+import '@/app/globals.css';
 
-```
-
-2. **Nella query, inseriamo i parametri $locale: **
-
-```javascript
-
+// Query GraphQL con parametro $locale per recuperare contenuti tradotti
 const LAYOUT_QUERY = `
   query LayoutQuery($locale: SiteLocale!) {
     _site {
@@ -57,7 +63,7 @@ const LAYOUT_QUERY = `
         tag
       }
     }
-    allMenuItems(locale: $locale) {
+    allMenuItems(locale: $locale, orderBy: position_ASC) {
       id
       label
       url
@@ -65,15 +71,7 @@ const LAYOUT_QUERY = `
   }
 `;
 
-```
-
-**$iteLocale! ->  Vede tutti i valori attivati nel tuo pannello (es. "it" e "en")**
-**$locale -> memorizza il valore inviato dal tuo codice (es. "it" o "en").**
-
-3. **Creiamo una nuova function di incapsulamento, che avrà con se tutti i data dei layout:**
-
-```javascript
-
+// Helper con cache React per deduplicare la fetch tra generateMetadata e Layout
 const getLayoutData = cache(async (params) => {
   const { lang } = await params;
   try {
@@ -81,63 +79,42 @@ const getLayoutData = cache(async (params) => {
       variables: { locale: lang },
     });
   } catch (error) {
-    console.error("Errore nel recupero dati layout:", error);
+    console.error('Errore nel recupero dati layout:', error);
     return null;
   }
 });
 
-```
-
-4. **Aggiustiamo generateMetadata e RootLayout richiamando al loro interno getLayoutData, aggiunendo inoltre che entrambi necessitano della chiamata dei parametri { params }**:
-
-```javascript
-
+// Generazione dinamica dei metadati SEO e Favicon
 export async function generateMetadata({ params }) {
-
   const data = await getLayoutData(params);
   return toNextMetadata(data?._site?.faviconMetaTags || []);
-  
 }
 
-```
-
-```javascript
-
-export default async function RootLayout({ children, params }) {
-
-  const { lang } = await params;            //questa ci servirà nell'html per recuperare la lang stabilita
+// Layout multilingua per il segmento [lang]
+export default async function LocalizedLayout({ children, params }) {
+  const { lang } = await params;
   const data = await getLayoutData(params);
   const menuItems = data?.allMenuItems || [];
 
   return (
-    //content html
-  )
-  
-}
-
-```
-
-5. **Dentro al return aggiungo l'html, passando nel tag html il lang={lang} :**
-
-```javascript
-
-return (
-    <html lang={lang} className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">
-        <header className="p-4 border-b flex justify-between items-center">
+    <html lang={lang} className="h-full antialiased">
+      <body className="min-h-full flex flex-col bg-gray-950 text-gray-100">
+        <header className="p-4 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
+          {/* Menù di Navigazione Tradotto */}
           <nav className="flex gap-4">
             {menuItems.map((item) => (
-              <Link className="hover:underline" href={item.url} key={item.id}>
+              <Link className="hover:underline text-sm font-medium text-gray-200" href="{item.url}" key="{item.id}">
                 {item.label}
               </Link>
             ))}
           </nav>
 
+          {/* Selettore Lingua (Language Switcher) */}
           <div className="flex gap-2 text-sm font-semibold">
-            <Link href="/it" className={`px-2 py-1 rounded ${lang === "it" ? "bg-white text-black" : "text-gray-400"}`}>
+            <Link ${ 'bg-blue-600 'bg-gray-800 'it' : ? className="{`px-3" hover:text-white' href="/it" lang="==" py-1 rounded text-gray-400 text-white' transition }`}>
               IT
             </Link>
-            <Link href="/en" className={`px-2 py-1 rounded ${lang === "en" ? "bg-white text-black" : "text-gray-400"}`}>
+            <Link ${ 'bg-blue-600 'bg-gray-800 'en' : ? className="{`px-3" hover:text-white' href="/en" lang="==" py-1 rounded text-gray-400 text-white' transition }`}>
               EN
             </Link>
           </div>
@@ -147,5 +124,5 @@ return (
       </body>
     </html>
   );
-
+}
 ```
