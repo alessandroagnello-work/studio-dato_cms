@@ -8,7 +8,7 @@ Collegando l'applicazione a un Headless CMS come DatoCMS, andiamo invece a centr
 
 ## Riferimenti Ufficiali
 
-* **DatoCMS CLI Favicon:** [https://www.datocms.com/docs/content-delivery-api/seo-and-favicon]
+* **DatoCMS CLI Favicon:** [https://www.datocms.com/docs/content-delivery-api/seo-and-favicon](https://www.datocms.com/docs/content-delivery-api/seo-and-favicon)
 
 ---
 
