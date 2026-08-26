@@ -144,10 +144,10 @@ export default async function LocalizedLayout({ children, params }) {
 
           {/* Selettore Lingua (Language Switcher) */}
           <div className="flex gap-2 text-sm font-semibold">
-            <Link ${ 'bg-blue-600 'bg-gray-800 'it' : ? className="{`px-3" hover:text-white' href="/it" lang="==" py-1 rounded text-gray-400 text-white' transition }`}>
+            <Link ${lang="==" 'bg-blue-600 'bg-gray-800 'it' : ? className="{`px-3" hover:text-white'}`} href="/it" py-1 rounded text-gray-400 text-white' transition>
               IT
             </Link>
-            <Link ${ 'bg-blue-600 'bg-gray-800 'en' : ? className="{`px-3" hover:text-white' href="/en" lang="==" py-1 rounded text-gray-400 text-white' transition }`}>
+            <Link ${lang="==" 'bg-blue-600 'bg-gray-800 'en' : ? className="{`px-3" hover:text-white'}`} href="/en" py-1 rounded text-gray-400 text-white' transition>
               EN
             </Link>
           </div>

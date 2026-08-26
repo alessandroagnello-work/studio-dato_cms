@@ -6,6 +6,8 @@
 Nei progetti Next.js standard, la Favicon (l'iconcina che compare nella scheda del browser) viene gestita inserendo un file statico `favicon.ico` direttamente nel codice sorgente. 
 Collegando l'applicazione a un Headless CMS come DatoCMS, andiamo invece a centralizzare la gestione dei metadati globali. Sfruttando le **SEO preferences** di DatoCMS e l'oggetto di sistema `_site`, permettiamo ai redattori di aggiornare l'icona del sito (e in futuro i metadati SEO generici) direttamente dalla dashboard, riflettendo le modifiche sul sito istantaneamente senza dover toccare il codice o ricaricare file sui server.
 
+---
+
 ## Riferimenti Ufficiali
 
 * **DatoCMS CLI Favicon:** [https://www.datocms.com/docs/content-delivery-api/seo-and-favicon](https://www.datocms.com/docs/content-delivery-api/seo-and-favicon)

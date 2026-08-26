@@ -29,7 +29,7 @@ Creando un modello dedicato su DatoCMS, diamo invece al team editoriale il poter
    * Spuntare la casella **Required** nella scheda *Validations*.
 
 ### 1.2 Attivazione Ordinamento Manuale (Drag & Drop)
-Per permettere ai redattori di ordinare liberamente i bottoni del menù:
+Per permettere di ordinare liberamente i bottoni del menù:
 1. Rimanendo in **Schema** -> **Menu Item**, cliccare su **Edit model** (vicino al titolo).
 2. Aprire la scheda **Presentation**.
 3. Alla voce **Ordering / Sort order**, selezionare l'opzione **Manual (drag and drop)**.
@@ -135,5 +135,4 @@ export default async function RootLayout({ children }) {
     </html>
   );
 }
-```
 ```

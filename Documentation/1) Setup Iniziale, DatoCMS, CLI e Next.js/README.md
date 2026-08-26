@@ -211,7 +211,6 @@ Per visualizzare i contenuti appena creati sulla nostra pagina iniziale (struttu
 ### 5.1 Modifica del file `src/app/page.js`
 Questo file è stato generato automaticamente da Next.js durante la fase di setup iniziale. Cancelliamo tutto il codice preimpostato di Next.js e sostituiamolo con il nostro codice personalizzato.
 
-
 **Codice Sorgente Completo:**
 
 ```javascript

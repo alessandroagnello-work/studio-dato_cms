@@ -4,6 +4,7 @@ import { performRequest } from "@/lib/datocms";
 import Link from "next/link";
 import "../globals.css";
 import { cache } from 'react';
+import LanguageSwitcher from "@/app/widgets/Language/languageSwitcher";
 
 const LAYOUT_QUERY = `
   query LayoutQuery($locale: SiteLocale!){
@@ -45,16 +46,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-
 export async function generateMetadata({ params }) {
-
   const data = await getLayoutData(params);
   return toNextMetadata(data?._site?.faviconMetaTags || []);
-  
 }
 
 export default async function RootLayout({ children, params }) {
-
   const { lang } = await params;
   const data = await getLayoutData(params);
   const menuItems = data?.allMenuItems || [];
@@ -71,14 +68,8 @@ export default async function RootLayout({ children, params }) {
             ))}
           </nav>
 
-          <div className="flex gap-2 text-sm font-semibold">
-            <Link href="/it" className={`px-2 py-1 rounded ${lang === "it" ? "bg-white text-black" : "text-gray-400"}`}>
-              IT
-            </Link>
-            <Link href="/en" className={`px-2 py-1 rounded ${lang === "en" ? "bg-white text-black" : "text-gray-400"}`}>
-              EN
-            </Link>
-          </div>
+          {/* Widget Selettore Lingua Dinamico */}
+          <LanguageSwitcher currentLang={lang} />
         </header>
 
         {children}

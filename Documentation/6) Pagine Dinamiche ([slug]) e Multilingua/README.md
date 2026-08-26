@@ -123,8 +123,8 @@ import { StructuredText } from 'react-datocms';
 import { notFound } from 'next/navigation';
 
 const PAGE_BY_SLUG_QUERY = `
-  query PageBySlugQuery($locale: SiteLocale!, $slug: String!) {
-    articolo(locale: $locale, filter: { slug: { eq: $slug } }) {
+  query PageBySlugQuery($locale: SiteLocale!,$slug: String!) {
+    articolo(locale: $locale, filter: { slug: { eq:$slug } }) {
       title
       description {
         value
@@ -198,4 +198,53 @@ const getLayoutData = cache(async (params) => {
     });
   } catch (error) {
     console.error('Errore nel recupero dati layout:', error);
-    return
+    return null;
+  }
+});
+
+export async function generateMetadata({ params }) {
+  const data = await getLayoutData(params);
+  return toNextMetadata(data?._site?.faviconMetaTags || []);
+}
+
+export default async function LocalizedLayout({ children, params }) {
+  const { lang } = await params;
+  const data = await getLayoutData(params);
+  const menuItems = data?.allMenuItems || [];
+
+  return (
+    <html lang={lang} className="h-full antialiased">
+      <body className="min-h-full flex flex-col bg-gray-950 text-gray-100">
+        <header className="p-4 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
+          
+          {/* Menù di Navigazione Tradotto con prefisso dinamico lingua */}
+          <nav className="flex gap-4 max-w-5xl">
+            {menuItems.map((item) => {
+              const localizedHref = item.url === '/' ? `/${lang}` : `/${lang}${item.url}`;
+              return (
+                <Link className="hover:underline text-sm font-medium text-gray-200" href="{localizedHref}" key="{item.id}">
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Selettore Lingua (Language Switcher) */}
+          <div className="flex gap-2 text-sm font-semibold">
+            <Link ${lang="==" 'bg-blue-600 'bg-gray-800 'it' : ? className="{`px-3" hover:text-white'}`} href="/it" py-1 rounded text-gray-400 text-white' transition>
+              IT
+            </Link>
+            <Link ${lang="==" 'bg-blue-600 'bg-gray-800 'en' : ? className="{`px-3" hover:text-white'}`} href="/en" py-1 rounded text-gray-400 text-white' transition>
+              EN
+            </Link>
+          </div>
+        </header>
+
+        <main className="flex-grow">
+          {children}
+        </main>
+      </body>
+    </html>
+  );
+}
+```
