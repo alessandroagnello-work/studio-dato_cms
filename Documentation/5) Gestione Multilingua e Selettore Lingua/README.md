@@ -20,17 +20,17 @@ Nel contesto del nostro progetto Next.js e DatoCMS, l'i18n indica l'insieme di t
 
 ### 1.1 Attivazione Locales nel Progetto
 1. Accedere alla Dashboard di DatoCMS.
-2. Navigare in **Configuration** → **Locales & Timezone**.
+2. Navigare in **Configuration** $\rightarrow$ **Locales & Timezone**.
 3. Aggiungere `Italian (it)` come lingua principale (Default locale) e `English (en)` come lingua secondaria.
 
 ### 1.2 Localizzazione del Modello `Menu Item`
-1. Accedere a **Schema** → **Menu Item** (`menu_item`).
+1. Accedere a **Schema** $\rightarrow$ **Menu Item** (`menu_item`).
 2. Selezionare il campo **Label** (`label`), cliccare **Edit field** e spuntare la casella **Enable localization on this field?**.
 3. Selezionare il campo **URL** (`url`), cliccare **Edit field** e spuntare **Enable localization on this field?**.
 4. Salvare le modifiche al modello.
 
 ### 1.3 Inserimento delle Traduzioni nei Record (Content)
-Nella sezione **Content** → **Menu Item**, compilare i campi per ciascuna lingua switchando tramite il selettore in alto a destra:
+Nella sezione **Content** $\rightarrow$ **Menu Item**, compilare i campi per ciascuna lingua switchando tramite il selettore in alto a destra:
 
 | Record | Lingua | Label | URL |
 | :--- | :--- | :--- | :--- |
@@ -67,17 +67,106 @@ src/app/
 ```
 
 ### 3.2 Modifica del file `src/app/[lang]/layout.js`
-Apriamo il file `layout.js` (ora spostato dentro `[lang]`) e aggiorniamolo per supportare il nuovo parametro dinamico, la cache e il selettore della lingua.
 
-**Cosa andiamo a modificare:**
-1. **Import:** Aggiungiamo `cache` da `react`.
-2. **Query:** Modifichiamo `LAYOUT_QUERY` per accettare il parametro `$locale` e passarlo alla richiesta `allMenuItems`.
-3. **Helper:** Creiamo la funzione `getLayoutData` avvolta in `cache()`.
-4. **Layout Async:** Risolviamo `await params` per ottenere `lang` e passarlo al tag `<html>`.
-5. **JSX:** Aggiungiamo il blocco HTML con i due link per cambiare lingua (IT / EN), gestendo la classe attiva in modo dinamico.
+**Import delle librerie**
+Aggiungiamo l'import di `cache` da React per ottimizzare le chiamate HTTP doppie, mantenendo i componenti `Link` e gli stili globali esistenti.
+```javascript
+import { performRequest } from '@/lib/datocms';
+import { toNextMetadata } from 'react-datocms/seo';
+import { cache } from 'react';
+import Link from 'next/link';
+import '@/app/globals.css';
+```
 
-**Codice Sorgente Completo Aggiornato:**
+**Definizione della Query GraphQL Aggiornata**
+Modifichiamo `LAYOUT_QUERY` dichiarando la variabile `$locale` di tipo `SiteLocale!`. Passiamo questa variabile alla query `allMenuItems` in modo che DatoCMS restituisca unicamente l'array delle voci di menù tradotte nella lingua corrente richiesta dall'utente.
+```javascript
+const LAYOUT_QUERY = `
+  query LayoutQuery($locale: SiteLocale!) {
+    _site {
+      faviconMetaTags {
+        attributes
+        content
+        tag
+      }
+    }
+    allMenuItems(locale: $locale, orderBy: position_ASC) {
+      id
+      label
+      url
+    }
+  }
+`;
+```
 
+**Helper per la Deduplicazione della Richiesta (Cache)**
+Poiché chiameremo i dati sia nei metadati sia nel layout visivo, creiamo una funzione `getLayoutData` avvolta in `cache()`. Risolviamo subito i `params` asincroni per estrarre la stringa `lang` (es. "it" o "en") e la passiamo come variabile `$locale` alla nostra richiesta GraphQL.
+```javascript
+const getLayoutData = cache(async (params) => {
+  const { lang } = await params;
+  try {
+    return await performRequest(LAYOUT_QUERY, {
+      variables: { locale: lang },
+    });
+  } catch (error) {
+    console.error('Errore nel recupero dati layout:', error);
+    return null;
+  }
+});
+```
+
+**Generazione dei Metadati**
+Sostituiamo la precedente chiamata diretta a `performRequest` con il nostro nuovo helper ottimizzato `getLayoutData(params)`, assicurandoci sempre di gestire eventuali fallimenti.
+```javascript
+export async function generateMetadata({ params }) {
+  const data = await getLayoutData(params);
+  return toNextMetadata(data?._site?.faviconMetaTags || []);
+}
+```
+
+**Il Server Component e il Selettore Lingua**
+Nel layout, estraiamo la lingua corrente (`lang`) e i dati. Renderizziamo l'HTML impostando l'attributo `lang`. Oltre al menù di navigazione tradotto, aggiungiamo un blocco per il **Selettore Lingua (Language Switcher)**: tramite operatore ternario verifichiamo se `lang` equivale a 'it' o 'en' per accendere visivamente il bottone corrispondente, puntando i link verso `/it` ed `/en`.
+```javascript
+export default async function LocalizedLayout({ children, params }) {
+  const { lang } = await params;
+  const data = await getLayoutData(params);
+  const menuItems = data?.allMenuItems || [];
+
+  return (
+    <html lang={lang} className="h-full antialiased">
+      <body className="min-h-full flex flex-col bg-gray-950 text-gray-100">
+        <header className="p-4 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
+          
+          {/* Menù di Navigazione Tradotto */}
+          <nav className="flex gap-4 max-w-5xl">
+            {menuItems.map((item) => (
+              <Link className="hover:underline text-sm font-medium text-gray-200" href={item.url} key={item.id}>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+
+          {/* Selettore Lingua (Language Switcher) */}
+          <div className="flex gap-2 text-sm font-semibold">
+            <Link className={`px-3 py-1 rounded transition ${lang === 'it' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/it">
+              IT
+            </Link>
+            <Link className={`px-3 py-1 rounded transition ${lang === 'en' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/en">
+              EN
+            </Link>
+          </div>
+        </header>
+
+        <main className="flex-grow">
+          {children}
+        </main>
+      </body>
+    </html>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo di `src/app/[lang]/layout.js`
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { toNextMetadata } from 'react-datocms/seo';
@@ -136,7 +225,7 @@ export default async function LocalizedLayout({ children, params }) {
           {/* Menù di Navigazione Tradotto */}
           <nav className="flex gap-4 max-w-5xl">
             {menuItems.map((item) => (
-              <Link className="hover:underline text-sm font-medium text-gray-200" href="{item.url}" key="{item.id}">
+              <Link className="hover:underline text-sm font-medium text-gray-200" href={item.url} key={item.id}>
                 {item.label}
               </Link>
             ))}
@@ -144,10 +233,10 @@ export default async function LocalizedLayout({ children, params }) {
 
           {/* Selettore Lingua (Language Switcher) */}
           <div className="flex gap-2 text-sm font-semibold">
-            <Link ${lang="==" 'bg-blue-600 'bg-gray-800 'it' : ? className="{`px-3" hover:text-white'}`} href="/it" py-1 rounded text-gray-400 text-white' transition>
+            <Link className={`px-3 py-1 rounded transition ${lang === 'it' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/it">
               IT
             </Link>
-            <Link ${lang="==" 'bg-blue-600 'bg-gray-800 'en' : ? className="{`px-3" hover:text-white'}`} href="/en" py-1 rounded text-gray-400 text-white' transition>
+            <Link className={`px-3 py-1 rounded transition ${lang === 'en' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/en">
               EN
             </Link>
           </div>

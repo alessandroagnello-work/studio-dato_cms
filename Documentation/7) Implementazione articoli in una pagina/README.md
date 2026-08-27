@@ -25,16 +25,16 @@ Infine, configuriamo un file dedicato `not-found.js`: quando un utente cerca un 
 ### 1.1 Creazione del Modello
 1. Nella Dashboard di DatoCMS, accedere a **Schema** e cliccare su **Create new model**.
 2. **Model Name**: `Articles` (Model ID generato: `articles_model`).
-3. **Tipo**: Selezionare **Collection** (Modello multi-istanza).
+3. **Tipo**: Selezionare **Collection** (Modello multi-istanza) e salvare.
 
 ### 1.2 Campi dello Schema
-Aggiungere i seguenti campi spuntando la casella **Enable localization on this field?** per ciascuno:
-* **Title** (`title`): Stringa a riga singola (Single-line string).
-* **Description** (`description`): Testo a più paragrafi (Multiple-paragraph text).
-* **Slug** (`slug`): Campo di tipo Slug univoco generato automaticamente dal titolo.
+Aggiungere i seguenti campi cliccando su **Add new field** e spuntando la casella **Enable localization on this field?** per ciascuno di essi:
+* **Title** (`title`): Scegliere **Text** $\rightarrow$ **Single-line string**.
+* **Description** (`description`): Scegliere **Text** $\rightarrow$ **Multiple-paragraph text** (per permettere testi lunghi con gli "a capo").
+* **Slug** (`slug`): Scegliere **SEO** $\rightarrow$ **Slug** (univoco e generato automaticamente dal titolo).
 
 ### 1.3 Creazione dei Record
-Inserire 6 articoli di prova compilati in doppia lingua (IT/EN) e ordinarli trascinandoli nella lista (`position_ASC`):
+Inserire 6 articoli di prova compilati in doppia lingua (IT/EN) nella sezione **Content** e ordinarli trascinandoli nella lista:
 
 | Pos | Title (IT) | Slug (IT) | Title (EN) | Slug (EN) |
 | :--- | :--- | :--- | :--- | :--- |
@@ -49,13 +49,56 @@ Inserire 6 articoli di prova compilati in doppia lingua (IT/EN) e ordinarli tras
 
 ## 2. Componente Riutilizzabile: `ArticleCard`
 
-### 2.1 Analisi del Codice e Concetti
-* **`on ArticlesModelRecord`**: In GraphQL, un Fragment deve dichiarare a quale tipo di dato appartiene. DatoCMS genera il tipo `ArticlesModelRecord` combinando la API Key del modello (`articles_model`) con la parola `Record`.
-* **Prop `lang`**: Il componente riceve sia l'oggetto `article` sia la lingua corrente (`lang`) per comporre dinamicamente la rotta del link (`/${lang}/articoli/...`).
+Per mantenere l'interfaccia pulita, creiamo un componente grafico isolato per l'anteprima del singolo articolo.
 
-### 2.2 Creazione del file `src/app/widgets/Article/ArticleCard.jsx`
-Creare la cartella `src/app/widgets/Article/` e al suo interno il file `ArticleCard.jsx`:
+### 2.1 Creazione del file `src/app/widgets/Article/ArticleCard.jsx`
 
+**Import delle librerie**
+Importiamo il tag `Link` per gestire la navigazione lato client verso la pagina di dettaglio.
+```javascript
+import Link from 'next/link';
+```
+
+**Definizione del GraphQL Fragment**
+In GraphQL, un Fragment permette di definire una lista riutilizzabile di campi. Esplicitiamo che stiamo richiedendo i campi del tipo `ArticlesModelRecord` (il tipo generato da DatoCMS per il nostro modello `articles_model`).
+```javascript
+export const ARTICLE_CARD_FRAGMENT = `
+  fragment ArticleCardFields on ArticlesModelRecord {
+    id
+    title
+    slug
+    description
+  }
+`;
+```
+
+**Il Componente Visivo**
+Il componente riceve come *props* sia l'oggetto `article` (contenente i dati restituiti dal CMS) sia la lingua corrente (`lang`) per comporre dinamicamente la rotta del link (`/${lang}/articoli/...`). Utilizziamo utility classes come `line-clamp-2` per troncare i testi troppo lunghi.
+```javascript
+export default function ArticleCard({ article, lang }) {
+  if (!article) return null;
+
+  return (
+    <div className="p-5 rounded-xl bg-gray-900 border border-gray-800 flex flex-col justify-between hover:border-blue-500/50 transition duration-200 shadow-lg w-full max-w-xs">
+      <div>
+        <h3 className="text-lg font-semibold text-white mb-2 line-clamp-2">
+          {article.title}
+        </h3>
+        {article.description && (
+          <p className="text-gray-400 text-sm line-clamp-2 mb-4">
+            {article.description}
+          </p>
+        )}
+      </div>
+      <Link className="text-blue-400 text-sm font-semibold hover:underline" href={`/${lang}/articoli/${article.slug}`}>
+        Leggi articolo →
+      </Link>
+    </div>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo di `src/app/widgets/Article/ArticleCard.jsx`
 ```javascript
 import Link from 'next/link';
 
@@ -84,7 +127,7 @@ export default function ArticleCard({ article, lang }) {
           </p>
         )}
       </div>
-      <Link className="text-blue-400 text-sm font-semibold hover:underline" href="{`/${lang}/articoli/${article.slug}`}">
+      <Link className="text-blue-400 text-sm font-semibold hover:underline" href={`/${lang}/articoli/${article.slug}`}>
         Leggi articolo →
       </Link>
     </div>
@@ -96,14 +139,108 @@ export default function ArticleCard({ article, lang }) {
 
 ## 3. Implementazione della Lista Articoli (Paginata)
 
-### 3.1 Analisi del Codice (Cosa aggiungiamo e perché)
-* **`first: $first` e `skip: $skip`**: Parametri di paginazione GraphQL. Se `first` è 3 e `skip` è 3, DatoCMS salta i primi 3 articoli e restituisce i successivi 3 (Pagina 2).
-* **`_allArticlesModelsMeta { count }`**: Campo speciale di sistema di DatoCMS per ottenere il numero totale assoluto dei record e calcolare il numero di pagine complessive.
-* **`...ArticleCardFields`**: Inserisce nella query il frammento esportato da `ArticleCard.jsx`.
-* **`parseInt(page || '1', 10)` e `Math.max(1, ...)`**: Convertono la stringa nell'URL (`?page=2`) in numero intero e impediscono valori minori di 1 per evitare errori matematici nel calcolo dell'offset.
+Adesso creiamo la pagina che mostrerà la griglia degli articoli, interrogando il CMS a blocchi (paginazione).
 
-### 3.2 Creazione del file `src/app/[lang]/articoli/page.js`
+### 3.1 Creazione del file `src/app/[lang]/articoli/page.js`
 
+**Import delle librerie e Frammento**
+Importiamo la funzione di fetch, il tag `Link` e il nostro componente `ArticleCard` insieme al suo Frammento GraphQL (`ARTICLE_CARD_FRAGMENT`).
+```javascript
+import { performRequest } from '@/lib/datocms';
+import Link from 'next/link';
+import ArticleCard, { ARTICLE_CARD_FRAGMENT } from '@/app/widgets/Article/ArticleCard';
+```
+
+**Definizione della Costante e della Query GraphQL**
+Definiamo `PAGE_SIZE` (quanti articoli vedere per pagina). La query usa i parametri GraphQL `first` e `skip` per limitare i risultati. Inoltre, chiamiamo il campo di sistema `_allArticlesModelsMeta { count }` per conoscere il numero totale di articoli presenti nel database. Includiamo infine il frammento `...ArticleCardFields`.
+```javascript
+const PAGE_SIZE = 3;
+
+const ARTICLES_QUERY = `
+  ${ARTICLE_CARD_FRAGMENT}
+
+  query ArticlesQuery($locale: SiteLocale!, $first: IntType!, $skip: IntType!) {
+    # Conteggio totale assoluto degli articoli per la matematica della paginazione
+    _allArticlesModelsMeta {
+      count
+    }
+    
+    # Blocco paginato degli articoli
+    allArticlesModels(locale: $locale, first: $first, skip: $skip, orderBy: position_ASC) {
+      ...ArticleCardFields
+    }
+  }
+`;
+```
+
+**Il Server Component e Calcolo della Paginazione**
+Estraiamo la lingua dai `params` e la pagina corrente dai `searchParams` (es. `?page=2`). Per sicurezza, trasformiamo il parametro stringa in un intero (`parseInt`) e impediamo matematicamente valori inferiori a 1 (`Math.max`). Poi calcoliamo gli elementi da saltare (`skip`).
+```javascript
+export default async function ArticoliPage({ params, searchParams }) {
+  const { lang } = await params;
+  const { page } = await searchParams;
+
+  // Sicurezza: trasforma in numero e impedisce valori negativi o inferiori a 1
+  const currentPage = Math.max(1, parseInt(page || '1', 10));
+  
+  // Calcolo articoli da saltare (es: Pagina 2 -> (2 - 1) * 3 = 3 articoli saltati)
+  const skip = (currentPage - 1) * PAGE_SIZE;
+
+  const data = await performRequest(ARTICLES_QUERY, {
+    variables: { locale: lang, first: PAGE_SIZE, skip },
+  });
+
+  const totalArticles = data?._allArticlesModelsMeta?.count || 0;
+  const totalPages = Math.ceil(totalArticles / PAGE_SIZE);
+```
+
+**Rendering della Griglia e dei Controlli di Navigazione**
+Renderizziamo l'array mappando ogni articolo all'interno del componente `<ArticleCard/>`. Subito sotto, calcoliamo logicamente se mostrare i pulsanti "Precedente" e "Successivo" verificando la pagina corrente rispetto al totale calcolato delle pagine (`totalPages`).
+```javascript
+  return (
+    <main className="min-h-screen py-12 px-4 max-w-5xl mx-auto text-gray-100">
+      <h1 className="text-3xl font-extrabold mb-8 text-center tracking-tight">
+        Lista Articoli
+      </h1>
+
+      {/* Rendering della griglia con il componente ArticleCard */}
+      <div className="flex justify-center gap-6 flex-wrap mb-10">
+        {data?.allArticlesModels?.map((art) => (
+          <ArticleCard article={art} key={art.id} lang={lang} />
+        ))}
+      </div>
+
+      {/* Paginazione */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between border-t border-gray-800 pt-6">
+          {currentPage > 1 ? (
+            <Link className="px-4 py-2 rounded-lg border border-gray-700 bg-gray-900 text-sm font-medium text-gray-200 hover:bg-gray-800 transition" href={`/${lang}/articoli?page=${currentPage - 1}`}>
+              ← Precedente
+            </Link>
+          ) : (
+            <div />
+          )}
+
+          <span className="text-sm font-medium text-gray-400">
+            Pagina <strong className="text-white">{currentPage}</strong> di{' '}
+            <strong className="text-white">{totalPages}</strong>
+          </span>
+
+          {currentPage < totalPages ? (
+            <Link className="px-4 py-2 rounded-lg border border-gray-700 bg-gray-900 text-sm font-medium text-gray-200 hover:bg-gray-800 transition" href={`/${lang}/articoli?page=${currentPage + 1}`}>
+              Successivo →
+            </Link>
+          ) : (
+            <div />
+          )}
+        </div>
+      )}
+    </main>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo di `src/app/[lang]/articoli/page.js`
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import Link from 'next/link';
@@ -114,14 +251,14 @@ const PAGE_SIZE = 3;
 const ARTICLES_QUERY = `
   ${ARTICLE_CARD_FRAGMENT}
 
-  query ArticlesQuery($locale: SiteLocale!, $first: IntType!,$skip: IntType!) {
+  query ArticlesQuery($locale: SiteLocale!, $first: IntType!, $skip: IntType!) {
     # Conteggio totale assoluto degli articoli per la matematica della paginazione
     _allArticlesModelsMeta {
       count
     }
     
     # Blocco paginato degli articoli
-    allArticlesModels(locale: $locale, first: $first, skip:$skip, orderBy: position_ASC) {
+    allArticlesModels(locale: $locale, first: $first, skip: $skip, orderBy: position_ASC) {
       ...ArticleCardFields
     }
   }
@@ -153,7 +290,7 @@ export default async function ArticoliPage({ params, searchParams }) {
       {/* Rendering della griglia con il componente ArticleCard */}
       <div className="flex justify-center gap-6 flex-wrap mb-10">
         {data?.allArticlesModels?.map((art) => (
-          <ArticleCard article="{art}" key="{art.id}" lang="{lang}"/>
+          <ArticleCard article={art} key={art.id} lang={lang} />
         ))}
       </div>
 
@@ -161,7 +298,7 @@ export default async function ArticoliPage({ params, searchParams }) {
       {totalPages > 1 && (
         <div className="flex items-center justify-between border-t border-gray-800 pt-6">
           {currentPage > 1 ? (
-            <Link - 1}`} className="px-4 py-2 rounded-lg border border-gray-700 bg-gray-900 text-sm font-medium text-gray-200 hover:bg-gray-800 transition" href="{`/${lang}/articoli?page=${currentPage">
+            <Link className="px-4 py-2 rounded-lg border border-gray-700 bg-gray-900 text-sm font-medium text-gray-200 hover:bg-gray-800 transition" href={`/${lang}/articoli?page=${currentPage - 1}`}>
               ← Precedente
             </Link>
           ) : (
@@ -174,7 +311,7 @@ export default async function ArticoliPage({ params, searchParams }) {
           </span>
 
           {currentPage < totalPages ? (
-            <Link + 1}`} className="px-4 py-2 rounded-lg border border-gray-700 bg-gray-900 text-sm font-medium text-gray-200 hover:bg-gray-800 transition" href="{`/${lang}/articoli?page=${currentPage">
+            <Link className="px-4 py-2 rounded-lg border border-gray-700 bg-gray-900 text-sm font-medium text-gray-200 hover:bg-gray-800 transition" href={`/${lang}/articoli?page=${currentPage + 1}`}>
               Successivo →
             </Link>
           ) : (
@@ -191,23 +328,114 @@ export default async function ArticoliPage({ params, searchParams }) {
 
 ## 4. Implementazione del Singolo Articolo (Dettaglio)
 
-### 4.1 Analisi del Codice (Cosa aggiungiamo e perché)
-* **Doppia Query in `ARTICLE_QUERY`**:
-  Chiediamo il dettaglio dell'articolo corrente (`article`) e contemporaneamente una lista completa e leggera (`allArticles`) per calcolare gli slug dell'articolo precedente e successivo tramite `.findIndex()`.
-* **Uso di `notFound()`**:
-  Importata da `next/navigation`. Se DatoCMS non trova l'articolo corrispondente allo slug inviato, eseguiamo `notFound()`. Questo attiva il rendering del file `not-found.js` e restituisce un codice di risposta HTTP 404 al client e ai motori di ricerca.
+Creiamo la pagina di dettaglio, gestendo la rotta dinamica e i bottoni per passare all'articolo precedente/successivo.
 
-### 4.2 Creazione del file `src/app/[lang]/articoli/[slug]/page.js`
+### 4.1 Creazione del file `src/app/[lang]/articoli/[slug]/page.js`
 
+**Import delle librerie e di notFound**
+Importiamo la funzione `notFound` da `next/navigation` per innescare un errore 404 qualora l'articolo non esistesse.
+```javascript
+import { performRequest } from '@/lib/datocms';
+import { notFound } from 'next/navigation';
+import Link from 'next/link';
+```
+
+**Definizione della Doppia Query GraphQL**
+In una singola chiamata richiediamo due pacchetti di dati: i dettagli pesanti dell'articolo in questione e una lista "leggera" di tutti gli articoli (ordinati) per poter calcolare logicamente quale post venga prima e quale dopo.
+```javascript
+const ARTICLE_QUERY = `
+  query ArticleQuery($locale: SiteLocale!, $slug: String!) {
+    # 1. Recupera i dettagli per renderizzare la pagina
+    article: articlesModel(filter: { slug: { eq: $slug } }, locale: $locale) {
+      title
+      description
+    }
+    
+    # 2. Recupera l'elenco sequenziale leggero per i bottoni Prev/Next
+    allArticles: allArticlesModels(locale: $locale, orderBy: position_ASC) {
+      title
+      slug
+    }
+  }
+`;
+```
+
+**Il Server Component e la Gestione Errori (404)**
+Otteniamo i dati e, tramite una guardia di controllo, verifichiamo se l'oggetto `article` esiste. In caso negativo, fermiamo l'esecuzione ed evochiamo `notFound()`, che manderà al browser uno Status Code 404 e caricherà la pagina di errore di sistema.
+```javascript
+export default async function ArticlePage({ params }) {
+  const { lang, slug } = await params;
+
+  const data = await performRequest(ARTICLE_QUERY, {
+    variables: { locale: lang, slug },
+  });
+
+  const article = data?.article;
+  const allArticles = data?.allArticles || [];
+
+  // Se l'articolo non esiste su DatoCMS, genera una risposta HTTP 404
+  if (!article) {
+    notFound();
+  }
+```
+
+**Calcolo dell'Articolo Precedente e Successivo**
+Scorriamo l'array completo per individuare in quale posizione (indice) si trova il nostro articolo. Sfruttando la matematica, ricaviamo lo slug dell'articolo posizionato prima (`currentIndex - 1`) e di quello posizionato dopo (`currentIndex + 1`).
+```javascript
+  // Identifica la posizione dell'articolo corrente
+  const currentIndex = allArticles.findIndex((art) => art.slug === slug);
+  const prevArticle = currentIndex > 0 ? allArticles[currentIndex - 1] : null;
+  const nextArticle =
+    currentIndex !== -1 && currentIndex < allArticles.length - 1
+      ? allArticles[currentIndex + 1]
+      : null;
+```
+
+**Rendering del Singolo Articolo**
+Stampiamo i contenuti a schermo e costruiamo la barra di navigazione inferiore inserendo i tag `<Link>` dinamicamente in base alla disponibilità di un post precedente o successivo.
+```javascript
+  return (
+    <main className="py-16 px-4 max-w-3xl mx-auto text-white text-center">
+      <article className="mb-12">
+        <h1 className="text-4xl font-bold mb-6">{article.title}</h1>
+        <div className="text-gray-300 leading-relaxed whitespace-pre-line text-lg text-left">
+          {article.description}
+        </div>
+      </article>
+
+      {/* Navigazione tra articoli correlati */}
+      <div className="flex items-center justify-center gap-4 border-t border-gray-800 pt-8 mt-8">
+        {prevArticle && (
+          <Link className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 font-medium rounded-lg border border-gray-700 text-sm transition" href={`/${lang}/articoli/${prevArticle.slug}`}>
+            ← Precedente
+          </Link>
+        )}
+
+        <Link className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg text-sm transition" href={`/${lang}/articoli`}>
+          Lista Articoli
+        </Link>
+
+        {nextArticle && (
+          <Link className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 font-medium rounded-lg border border-gray-700 text-sm transition" href={`/${lang}/articoli/${nextArticle.slug}`}>
+            Successivo →
+          </Link>
+        )}
+      </div>
+    </main>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo di `src/app/[lang]/articoli/[slug]/page.js`
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 
 const ARTICLE_QUERY = `
-  query ArticleQuery($locale: SiteLocale!,$slug: String!) {
+  query ArticleQuery($locale: SiteLocale!, $slug: String!) {
     # 1. Recupera i dettagli per renderizzare la pagina
-    article: articlesModel(filter: { slug: { eq: $slug } }, locale:$locale) {
+    article: articlesModel(filter: { slug: { eq: $slug } }, locale: $locale) {
       title
       description
     }
@@ -255,17 +483,17 @@ export default async function ArticlePage({ params }) {
       {/* Navigazione tra articoli correlati */}
       <div className="flex items-center justify-center gap-4 border-t border-gray-800 pt-8 mt-8">
         {prevArticle && (
-          <Link className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 font-medium rounded-lg border border-gray-700 text-sm transition" href="{`/${lang}/articoli/${prevArticle.slug}`}">
+          <Link className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 font-medium rounded-lg border border-gray-700 text-sm transition" href={`/${lang}/articoli/${prevArticle.slug}`}>
             ← Precedente
           </Link>
         )}
 
-        <Link className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg text-sm transition" href="{`/${lang}/articoli`}">
+        <Link className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg text-sm transition" href={`/${lang}/articoli`}>
           Lista Articoli
         </Link>
 
         {nextArticle && (
-          <Link className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 font-medium rounded-lg border border-gray-700 text-sm transition" href="{`/${lang}/articoli/${nextArticle.slug}`}">
+          <Link className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 font-medium rounded-lg border border-gray-700 text-sm transition" href={`/${lang}/articoli/${nextArticle.slug}`}>
             Successivo →
           </Link>
         )}
@@ -279,12 +507,39 @@ export default async function ArticlePage({ params }) {
 
 ## 5. Gestione degli Errori e Pagina 404 (`not-found.js`)
 
-### 5.1 Analisi del Codice (Cosa aggiungiamo e perché)
-* **Posizionamento in `src/app/[lang]/not-found.js`**: Collocando il file all'interno della cartella `[lang]`, la pagina di errore verrà renderizzata **dentro il layout principale** (`layout.js`). Ciò garantisce la presenza di Header, Navigazione, Selettore di Lingua e stili globali Tailwind.
-* **Risposta HTTP 404 Effettiva**: A differenza di un normale componente visivo, l'uso di `not-found.js` in combinazione con la funzione `notFound()` assicura che il server invii lo status code **404 Not Found**. Questo impedisce ai motori di ricerca di indicizzare pagine prive di contenuto ("Soft 404").
+Creiamo l'interfaccia dedicata per gestire lo status HTTP 404.
 
-### 5.2 Creazione del file `src/app/[lang]/not-found.js`
+### 5.1 Creazione del file `src/app/[lang]/not-found.js`
 
+**Import delle librerie**
+Importiamo `Link` per permettere all'utente di tornare alla home qualora si fosse smarrito.
+```javascript
+import Link from 'next/link';
+```
+
+**Il Componente di Errore 404**
+Esportiamo la funzione `NotFound`. Collocando questo file all'interno della cartella `[lang]`, la pagina di errore verrà renderizzata automaticamente **dentro il layout principale** (`layout.js`). Questo garantisce che l'utente veda comunque l'header, il menù di navigazione e i footer del sito pur ricevendo tecnicamente una vera risposta 404.
+```javascript
+export default function NotFound() {
+  return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center text-center px-4">
+      <h1 className="text-6xl font-extrabold text-blue-500 mb-2">404</h1>
+      <h2 className="text-2xl font-bold text-white mb-4">
+        Pagina non trovata / Page not found
+      </h2>
+      <p className="text-gray-400 max-w-md mb-8 text-sm">
+        Il contenuto che stai cercando è stato rimosso, ha cambiato indirizzo o non è disponibile su DatoCMS.
+      </p>
+      
+      <Link className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg text-sm transition shadow-lg" href="/">
+        Torna alla Home
+      </Link>
+    </div>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo di `src/app/[lang]/not-found.js`
 ```javascript
 import Link from 'next/link';
 

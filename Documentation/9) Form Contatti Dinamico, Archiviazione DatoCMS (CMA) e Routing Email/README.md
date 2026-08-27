@@ -118,7 +118,7 @@ Il flusso dati prevede tre componenti fondamentali: una pagina server per legger
 
 ### 3.1 La Pagina Server (`src/app/[lang]/contatti/page.js`)
 
-**Spiegazione: La Query GraphQL**
+**La Query GraphQL**
 Iniziamo definendo la query GraphQL. Richiediamo a DatoCMS tutti i campi creati nel modello `Contact Page`. Usiamo la variabile `$locale` per assicurarci di ricevere i testi nella lingua giusta (es. Italiano o Inglese).
 ```javascript
 import { performRequest } from '@/lib/datocms';
@@ -142,7 +142,7 @@ const CONTACT_PAGE_QUERY = `
 `;
 ```
 
-**Spiegazione: Recupero Dati e Iniezione**
+**Recupero Dati e Iniezione**
 Nel Server Component, recuperiamo la lingua dell'utente dai parametri dell'URL (`params.lang`) ed eseguiamo la query. Una volta ottenuti i testi, li passiamo al componente visivo `<ContactForm>` tramite la proprietà `content={content}`.
 ```javascript
 export default async function ContactPage({ params }) {
@@ -162,13 +162,13 @@ export default async function ContactPage({ params }) {
       </div>
 
       {/* Passiamo i testi estratti dal CMS al form interattivo */}
-      <ContactForm content="{content}" lang="{lang}"/>
+      <ContactForm content={content} lang={lang}/>
     </main>
   );
 }
 ```
 
-#### Ecco un codice d'esempio di `page.js`
+#### Ecco un codice d'esempio completo di `page.js`
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import ContactForm from '@/app/widgets/Contact/ContactForm';
@@ -214,7 +214,7 @@ export default async function ContactPage({ params }) {
         )}
       </div>
 
-      <ContactForm content="{content}" lang="{lang}"/>
+      <ContactForm content={content} lang={lang}/>
     </main>
   );
 }
@@ -224,7 +224,7 @@ export default async function ContactPage({ params }) {
 
 ### 3.2 Il Componente Form (`src/app/widgets/Contact/ContactForm.jsx`)
 
-**Spiegazione: Hook di Sottomissione**
+**Hook di Sottomissione**
 Essendo un componente interattivo, dobbiamo usare `'use client'`. Utilizziamo `useActionState` (React 19) per collegare il form alla nostra funzione backend (`submitContactForm`) senza dover gestire manualmente i `fetch`. L'hook ci fornisce `state` (per capire se l'invio è andato a buon fine) e `isPending` (per capire se stiamo caricando).
 ```jsx
 'use client';
@@ -239,8 +239,9 @@ export default function ContactForm({ content, lang }) {
   if (!content) return null;
 ```
 
-**Spiegazione: Messaggi di Feedback e Testi Dinamici**
-Nel render, mostriamo un banner verde o rosso in base allo `state`. Notare come ogni etichetta non sia scritta a mano, ma prenda il valore da DatoCMS (es. `{content.firstNameLabel}`).
+**Testi Dinamici (Label) dal punto di vista dello Sviluppatore**
+Nel render dell'interfaccia, notiamo che i testi dei campi non sono scritti a mano nel codice (es. `<label>Nome *</label>`), bensì sono stampati leggendo la proprietà dal CMS (es. `<label>{content.firstNameLabel} *</label>`). 
+Questo approccio **disaccoppia l'interfaccia dai contenuti (data-driven)**. Se il marketing decide di cambiare la parola "Nome" in "Nome di Battesimo", il developer non dovrà toccare una singola riga di codice né fare un nuovo deploy. Basterà aggiornare il campo su DatoCMS.
 ```jsx
   return (
     <form action={formAction} className="...">
@@ -249,14 +250,14 @@ Nel render, mostriamo un banner verde o rosso in base allo `state`. Notare come 
           {content.successMessageLabel}
         </div>
       )}
-      {/* ... */}
+      {/* Esempio di Label Dinamica */}
       <div>
         <label>{content.firstNameLabel} *</label>
         <input type="text" name="firstName" required />
       </div>
 ```
 
-**Spiegazione: Il pulsante disabilitabile**
+**Il pulsante disabilitabile**
 Il bottone di invio usa la proprietà `disabled={isPending}` per diventare non cliccabile mentre il server sta salvando i dati, evitando che l'utente invii form multipli premendo ripetutamente.
 ```jsx
       <button type="submit" disabled={isPending}>
@@ -267,7 +268,7 @@ Il bottone di invio usa la proprietà `disabled={isPending}` per diventare non c
 }
 ```
 
-#### Ecco un codice d'esempio di `ContactForm.jsx`
+#### Ecco un codice d'esempio completo di `ContactForm.jsx`
 ```jsx
 'use client';
 
@@ -349,9 +350,8 @@ export default function ContactForm({ content, lang }) {
 
 ### 3.3 La Logica Server: Routing Email e Archiviazione (`src/app/actions/contact.js`)
 
-**Spiegazione: Direttiva Server e Routing Dictionary**
-La direttiva `'use server'` in alto assicura che questo codice non venga mai inviato al browser, proteggendo le chiavi API. Creiamo poi un Dizionario (`RECIPIENT_MAP`) che mappa il valore del form (es. `commerciale`) verso l'email aziendale corretta. 
-*(N.B. Durante la fase di sviluppo, avendo un account Resend gratuito non verificato, le email destinazione devono coincidere obbligatoriamente con l'email di registrazione di Resend).*
+**Direttiva Server e Routing Dictionary**
+La direttiva `'use server'` in alto assicura che questo codice non venga mai inviato al browser, proteggendo le chiavi API. Creiamo poi un Dizionario (`RECIPIENT_MAP`) che mappa il valore del form (es. `commerciale`) verso l'email aziendale corretta. Questo approccio è estremamente sicuro, poiché un utente malintenzionato non potrà mai ispezionare le vere caselle di posta aziendali manipolando il codice lato client.
 ```javascript
 'use server';
 import { buildClient } from '@datocms/cma-client-node';
@@ -367,9 +367,9 @@ const RECIPIENT_MAP = {
 };
 ```
 
-**Spiegazione: Archiviazione in DatoCMS e l'ID Dinamico (Bypassare il 404)**
-Estraiamo i dati form. Successivamente, inizializziamo il client `CMA` passando il token e, fondamentale, specifichiamo l'environment.
-Per creare il record, DatoCMS esige l'ID tecnico (es. `GlQT...`), non lo slug testuale. Per evitare errori 404, facciamo prima una ricerca dinamica tramite `.find('contact_submission')` per estrarre l'ID automaticamente.
+**Archiviazione in DatoCMS e l'ID Dinamico (Bypassare il 404)**
+Dopo aver estratto i dati digitati nel form (`formData.get`), inizializziamo il client `CMA` passando il token e, fondamentale, specifichiamo l'environment di lavoro (es. `main`).
+Per creare il record nel database, DatoCMS esige l'ID tecnico univoco del modello (es. `GlQT...`), non lo slug testuale. Se usassimo il nome testuale incapperemmo in un errore 404. Per risolvere il problema in modo dinamico e pulito, usiamo la funzione `.find('contact_submission')` per farci restituire l'oggetto completo del modello, da cui estraiamo la proprietà corretta `.id`.
 ```javascript
 export async function submitContactForm(prevState, formData) {
   const firstName = formData.get('firstName');
@@ -384,26 +384,42 @@ export async function submitContactForm(prevState, formData) {
     // Cerchiamo il modello dinamicamente per ricavare l'ID Tecnico
     const itemType = await client.itemTypes.find('contact_submission');
 
-    // Salviamo i dati
+    // Salviamo i dati su DatoCMS
     await client.items.create({
       item_type: { type: 'item_type', id: itemType.id }, 
       first_name: firstName,
-      /* ... passaggio campi ... */
+      /* ... passaggio di tutti i campi testuali ... */
     });
 ```
 
-**Spiegazione: Invio Email (Bypassare il 403 Sandbox)**
-Infine, usiamo Resend per inviare due email: una al reparto competente e una di conferma all'utente. 
-*(N.B. Come per i destinatari, l'account Sandbox di Resend esige che il mittente "from:" sia esclusivamente `onboarding@resend.dev`, pena errore 403).*
+**La doppia gestione delle Email tramite Resend**
+La parte conclusiva della Server Action si occupa di gestire un **duplice invio asincrono**. Abbiamo architettato il sistema per soddisfare due necessità aziendali distinte:
+
+1. **Ricezione Informazioni Cliente (L'email per l'Azienda):** 
+   Il primo blocco invia un'email al reparto di competenza (`to: targetRecipient`). Il corpo HTML di questa email viene interpolato dinamicamente con le variabili fornite dall'utente, assicurando che l'azienda riceva la lead in modo strutturato.
+   
+2. **Messaggio di Cortesia (L'email per il Cliente):**
+   Subito dopo, inneschiamo una seconda chiamata API. Questa volta il destinatario dell'email sarà la variabile `email` (l'indirizzo digitato dal cliente). Il corpo del messaggio conterrà una ricevuta di sistema per rassicurare l'utente.
+
+*(Nota: Per chi effettua test utilizzando un account Sandbox gratuito su Resend, la piattaforma applica policy restrittive per evitare spam. In questa fase di sviluppo, sia il parametro `from:` sia il parametro `to:` devono essere forzati e verificati, altrimenti le API restituiranno errore 403).*
+
 ```javascript
     const targetRecipient = RECIPIENT_MAP[topic] || 'la.tua.email.registrata@resend.it';
 
-    // Invio Email Aziendale
+    // 1. Invio Email Ricezione Lead all'Azienda
     await resend.emails.send({
       from: 'onboarding@resend.dev',
       to: targetRecipient,
       subject: `Nuovo Contatto da ${firstName}`,
-      html: `...`
+      html: `<p>Dati utente: ${email}, ${message} ...</p>`
+    });
+
+    // 2. Invio Email Ricevuta di Conferma al Cliente
+    await resend.emails.send({
+      from: 'onboarding@resend.dev',
+      to: targetRecipient, // In Produzione sostituire con la variabile estratta: email
+      subject: `Conferma ricezione messaggio`,
+      html: `<p>Grazie per averci contattato ${firstName} ...</p>`
     });
 
     return { success: true, error: false };
@@ -413,7 +429,7 @@ Infine, usiamo Resend per inviare due email: una al reparto competente e una di 
 }
 ```
 
-#### Ecco un codice d'esempio di `contact.js`
+#### Ecco un codice d'esempio completo di `contact.js`
 ```javascript
 'use server';
 
@@ -473,10 +489,10 @@ export async function submitContactForm(prevState, formData) {
     await resend.emails.send({
       from: 'onboarding@resend.dev',
       to: targetRecipient,
-      subject: `[Nuovo Contatto - ${topic.toUpperCase()}] da ${firstName}${lastName}`,
+      subject: `[Nuovo Contatto - ${topic.toUpperCase()}] da ${firstName} ${lastName}`,
       html: `
         <h2>Nuovo messaggio dal sito web</h2>
-        <p><strong>Nome:</strong> ${firstName}${lastName}</p>
+        <p><strong>Nome:</strong> ${firstName} ${lastName}</p>
         <p><strong>Email:</strong> ${email}</p>
         <p><strong>Telefono:</strong> ${phone || 'Non specificato'}</p>
         <p><strong>Argomento:</strong> ${topic}</p>
@@ -508,14 +524,14 @@ export async function submitContactForm(prevState, formData) {
 
 ---
 
-## 5. Documentazione e Verifica dei Requisiti (Task Completion)
+## 5. Verifica funzionalità 
 
-L'architettura sviluppata soddisfa interamente i punti di verifica richiesti dalla traccia di progetto:
+L'architettura sviluppata soddisfa interamente i punti di verifica seguenti:
 
-1. **Inviare un'email formattata a destinatario definito:** Verificato. Il pacchetto `Resend` compila un template HTML pulito popolato con i dati estratti dal form.
-2. **Inviare un'email di notifica invio al mittente:** Verificato. La Server Action esegue una seconda chiamata API asincrona. *(NB: Nella demo è configurata per aggirare le restrizioni dell'account Sandbox).*
-3. **Verificare cambio mittente in base all'argomento (destinatari condivisi):** Verificato. Questo requisito è stato realizzato creando un Dictionary (`RECIPIENT_MAP`) lato server. Questo pattern associa dinamicamente le chiavi di selezione (es. sia `commerciale` che `preventivo`) alla medesima casella di posta aziendale protetta.
-4. **Memorizzazione del contatto su un archivio dati:** Verificato. Sfruttando l'API ufficiale `@datocms/cma-client-node` combinata con il recupero dinamico dell'ID di sistema del modello, ogni invio genera un record persistente e consultabile sulla dashboard di DatoCMS (`Contact Submission`).
+1. **Inviare un'email formattata a destinatario definito:** Il pacchetto `Resend` compila un template HTML pulito popolato con i dati estratti dal form.
+2. **Inviare un'email di notifica invio al mittente:** La Server Action esegue una seconda chiamata API asincrona. *(NB: Nella demo è configurata per aggirare le restrizioni dell'account Sandbox).*
+3. **Verificare cambio mittente in base all'argomento (destinatari condivisi):** Questo requisito è stato realizzato creando un Dictionary (`RECIPIENT_MAP`) lato server. Questo pattern associa dinamicamente le chiavi di selezione (es. sia `commerciale` che `preventivo`) alla medesima casella di posta aziendale protetta.
+4. **Memorizzazione del contatto su un archivio dati:** Sfruttando l'API ufficiale `@datocms/cma-client-node` combinata con il recupero dinamico dell'ID di sistema del modello, ogni invio genera un record persistente e consultabile sulla dashboard di DatoCMS (`Contact Submission`).
 
 ---
 
@@ -530,3 +546,156 @@ Per verificare visivamente che l'archiviazione avvenga correttamente e per consu
 3. Nella colonna laterale di sinistra, individua e clicca sul modello **Contact Submission**.
 4. Ti apparirà una tabella contenente l'elenco di tutte le richieste inviate dal sito web. 
 5. Cliccando su ogni singola riga (Record), si aprirà il dettaglio completo con tutti i campi salvati: **Nome**, **Cognome**, **Email**, **Telefono**, l'**Argomento** selezionato e il testo integrale del **Messaggio**.
+
+---
+
+## 7. Recupero dei Dati Archiviati via Codice (Read API / GraphQL)
+
+Oltre alla consultazione manuale tramite l'interfaccia di DatoCMS, un'architettura headless consente allo sviluppatore di interrogare via codice il modello `Contact Submission` per recuperare programmaticamente le richieste salvate nel database (ad esempio per costruire una dashboard interna).
+
+### 7.1 La Query GraphQL per la Lettura delle Submissions
+
+**La Query di Lettura**
+Per leggere la lista dei messaggi archiviati, definiamo una query GraphQL che interroga il modello `allContactSubmissions`. Possiamo ordinare i record per data di creazione decrescente (`orderBy: _createdAt_DESC`) e richiedere esattamente le proprietà che ci interessano.
+```javascript
+const ALL_SUBMISSIONS_QUERY = `
+  query AllSubmissionsQuery {
+    allContactSubmissions(orderBy: _createdAt_DESC) {
+      id
+      firstName
+      lastName
+      email
+      phone
+      topic
+      message
+      _createdAt
+    }
+  }
+`;
+```
+
+### 7.2 Abilitare la Lettura dei Dati in Bozza (`includeDrafts`)
+
+Quando una Server Action crea un record con la CMA, DatoCMS lo salva in automatico come **Bozza (Draft)**. Poiché le query CDA di default cercano solo contenuti pubblicati, la normale esecuzione della query restituirebbe un array vuoto.
+
+Per permettere a GraphQL di restituire tutti i messaggi archiviati senza doverli pubblicare a mano dal pannello, passiamo l'opzione `includeDrafts: true` direttamente e *solo* alla chiamata specifica, sfruttando il parametro `options` del nostro helper `performRequest`:
+```javascript
+const data = await performRequest(ALL_SUBMISSIONS_QUERY, {
+  includeDrafts: true, // Fondamentale per leggere i messaggi in bozza
+});
+```
+*In questo modo non andiamo a compromettere il resto dell'applicazione mostrando le bozze di altre pagine.*
+
+### 7.3 Esempio 1: Funzione per ritornare solo l'array di dati
+
+Se abbiamo bisogno di estrarre questi dati in modo programmatico (ad esempio per inviarli a un altro gestionale interno o usarli in un'API), possiamo creare una semplice funzione asincrona. Questa funzione esegue la query e restituisce unicamente l'array puro, pronto per essere elaborato.
+
+```javascript
+import { performRequest } from '@/lib/datocms';
+
+const ALL_SUBMISSIONS_QUERY = `
+  query AllSubmissionsQuery {
+    allContactSubmissions(orderBy: _createdAt_DESC) {
+      id
+      firstName
+      lastName
+      email
+      phone
+      topic
+      message
+      _createdAt
+    }
+  }
+`;
+
+export async function getSubmissionsData() {
+  const data = await performRequest(ALL_SUBMISSIONS_QUERY, { includeDrafts: true });
+  return data?.allContactSubmissions || [];
+}
+```
+
+### 7.4 Esempio 2: Implementazione in una Pagina Next.js (`src/app/admin/submissions/page.js`)
+
+**Esecuzione della Chiamata e Rendering**
+Se invece il nostro obiettivo è costruire una pagina visiva (una mini-dashboard aziendale), eseguiamo la chiamata all'interno del Server Component. Gestiamo il caso in cui il database sia vuoto mostrando un avviso (`submissions.length === 0`), altrimenti cicliamo l'array stampando a schermo tutti i dettagli ricevuti, convertendo la data in un formato leggibile per gli umani.
+
+```javascript
+export default async function SubmissionsDataPage() {
+  const data = await performRequest(ALL_SUBMISSIONS_QUERY, { includeDrafts: true });
+  const submissions = data?.allContactSubmissions || [];
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto text-white">
+      <h1 className="text-2xl font-bold mb-6">Storico Richieste Ricevute</h1>
+      
+      {submissions.length === 0 ? (
+        <p className="text-gray-400">Nessuna richiesta trovata nel database.</p>
+      ) : (
+        <ul className="space-y-4">
+          {submissions.map((item) => (
+            <li key={item.id} className="p-4 bg-gray-900 border border-gray-800 rounded-lg">
+              {/* ... rendering dell'elemento ... */}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo per mostrare lo storico richieste
+```javascript
+import { performRequest } from '@/lib/datocms';
+
+const ALL_SUBMISSIONS_QUERY = `
+  query AllSubmissionsQuery {
+    allContactSubmissions(orderBy: _createdAt_DESC) {
+      id
+      firstName
+      lastName
+      email
+      phone
+      topic
+      message
+      _createdAt
+    }
+  }
+`;
+
+export default async function SubmissionsDataPage() {
+  // Esecuzione della query per recuperare l'elenco dei dati dal DB DatoCMS (incluse le bozze)
+  const data = await performRequest(ALL_SUBMISSIONS_QUERY, {
+    includeDrafts: true, // Obbligatorio per recuperare i form archiviati come Draft
+  });
+  
+  const submissions = data?.allContactSubmissions || [];
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto text-white">
+      <h1 className="text-2xl font-bold mb-6">Storico Richieste Ricevute</h1>
+      
+      {submissions.length === 0 ? (
+        <p className="text-gray-400">Nessuna richiesta trovata nel database.</p>
+      ) : (
+        <ul className="space-y-4">
+          {submissions.map((item) => (
+            <li key={item.id} className="p-4 bg-gray-900 border border-gray-800 rounded-lg">
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-semibold text-blue-400">
+                  {item.firstName} {item.lastName} ({item.email})
+                </span>
+                <span className="text-xs text-gray-500">
+                  {new Date(item._createdAt).toLocaleDateString()}
+                </span>
+              </div>
+              <p className="text-sm text-gray-300"><strong>Argomento:</strong> {item.topic}</p>
+              <p className="text-sm text-gray-400 mt-1">{item.message}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+```

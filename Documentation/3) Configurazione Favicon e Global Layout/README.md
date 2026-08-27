@@ -36,15 +36,55 @@ In Next.js (App Router), il file `layout.js` è il contenitore principale di tut
 ### 2.1 Modifica del file `src/app/layout.js`
 Questo file è stato generato automaticamente in fase di setup. Andiamo a svuotarlo e a riscriverlo per recuperare i tag SEO globali da DatoCMS.
 
-**Cosa fa questo script:**
-* **`LAYOUT_QUERY`**: Interroga l'oggetto speciale `_site` (nativo di DatoCMS, non va creato manualmente) per recuperare le impostazioni globali del progetto. Il campo `faviconMetaTags` restituisce un array contenente tutti i tag HTML (compresi gli attributi) necessari per la generazione della Favicon nei vari formati supportati dai browser moderni.
-* **`generateMetadata()`**: È una funzione speciale nativa di Next.js. Viene eseguita lato server prima del rendering della pagina e serve a popolare il blocco `<head>` del documento HTML.
-* **`toNextMetadata()`**: È una funzione di supporto della libreria `react-datocms/seo` che prende l'array di dati grezzi di DatoCMS e lo converte nel formato esatto richiesto da Next.js per i metadati.
+**Import delle librerie**
+Iniziamo importando la nostra funzione helper `performRequest` per eseguire chiamate GraphQL verso DatoCMS, e la funzione `toNextMetadata` fornita dalla libreria `react-datocms/seo` per convertire i dati grezzi nel formato supportato da Next.js.
+```javascript
+import { performRequest } from '@/lib/datocms';
+import { toNextMetadata } from 'react-datocms/seo';
+```
 
-*(Nota: se in futuro questo file dovesse ospitare query più complesse, basterà aggiungere nuovi campi all'interno di `LAYOUT_QUERY`).*
+**Definizione della Query GraphQL**
+Definiamo la stringa di query GraphQL `LAYOUT_QUERY`. Interroghiamo l'oggetto speciale `_site` (nativo di DatoCMS, non va creato manualmente) per recuperare le impostazioni globali del progetto. Il campo `faviconMetaTags` restituisce un array contenente tutti i tag HTML (compresi gli attributi) necessari per la generazione della Favicon nei vari formati supportati dai browser moderni.
+```javascript
+const LAYOUT_QUERY = `
+  query LayoutQuery {
+    _site {
+      faviconMetaTags {
+        attributes
+        content
+        tag
+      }
+    }
+  }
+`;
+```
 
-**Codice Sorgente Completo da incollare:**
+**Generazione Dinamica dei Metadati**
+Utilizziamo `generateMetadata()`, una funzione speciale nativa di Next.js. Viene eseguita lato server prima del rendering della pagina e serve a popolare il blocco `<head>` del documento HTML. Al suo interno eseguiamo la chiamata per ottenere l'array di tag da DatoCMS e lo passiamo a `toNextMetadata()` per la conversione.
+```javascript
+export async function generateMetadata() {
+  const data = await performRequest(LAYOUT_QUERY);
+  
+  // Converte i tag di DatoCMS nel formato accettato da Next.js
+  return toNextMetadata(data?._site?.faviconMetaTags || []);
+}
+```
 
+**Layout Principale di Base**
+Infine, esportiamo il componente `RootLayout` che fa da contenitore principale per l'intera applicazione.
+```javascript
+export default function RootLayout({ children }) {
+  return (
+    <html lang="it">
+      <body>
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo di `src/app/layout.js`
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { toNextMetadata } from 'react-datocms/seo';

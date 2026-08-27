@@ -21,7 +21,7 @@ Andiamo ad estendere un modello preesistente (o a crearne uno nuovo generico, es
 
 ### 1.1 Aggiunta del campo Slug al modello `articolo`
 1. Accedere alla dashboard di DatoCMS, navigare su **Schema** e selezionare il modello **Articolo** (Model ID: `articolo`).
-2. Cliccare su **Add new field** -> scegliere il gruppo **SEO** -> selezionare **Slug**.
+2. Cliccare su **Add new field** $\rightarrow$ scegliere il gruppo **SEO** $\rightarrow$ selezionare **Slug**.
 3. Nella scheda **Settings**:
    * **Field label:** `Slug`
    * **Field ID (API Key):** `slug` (in minuscolo)
@@ -35,7 +35,7 @@ Andiamo ad estendere un modello preesistente (o a crearne uno nuovo generico, es
 
 ## 2. Struttura Contenuti (Content)
 
-Configuriamo i record nella sezione **Content** -> **Articolo** compilando i campi per entrambe le lingue:
+Configuriamo i record nella sezione **Content** $\rightarrow$ **Articolo** compilando i campi per entrambe le lingue:
 
 | Pagina | Titolo (IT / EN) | Slug (IT) | Slug (EN) | Status |
 | :--- | :--- | :--- | :--- | :--- |
@@ -65,13 +65,59 @@ src/app/
 ## 4. Implementazione del Codice Sorgente
 
 ### 4.1 Modifica del file `src/app/[lang]/page.js`
-Questo file gestisce la rotta radice della lingua (es. `localhost:3000/it`). Andiamo a modificarlo affinché recuperi dinamicamente i dati del record che ha lo slug impostato su "home".
 
-**Cosa fa questo script:**
-Estrae la lingua dai parametri e interroga GraphQL chiedendo di restituire solo l'articolo il cui campo `slug` è esattamente uguale a `"home"`.
+Questo file gestisce la rotta radice della lingua (es. `localhost:3000/it`). Lo andiamo a modificare affinché recuperi dinamicamente l'articolo che fa da "Home".
 
-**Codice Sorgente Completo:**
+**Import delle librerie**
+Importiamo la funzione di fetch da DatoCMS e il componente per visualizzare i testi strutturati.
+```javascript
+import { performRequest } from '@/lib/datocms';
+import { StructuredText } from 'react-datocms';
+```
 
+**Definizione della Query GraphQL**
+Chiediamo a DatoCMS di restituire esclusivamente il record `articolo` in cui il campo `slug` è esattamente uguale (`eq`) a `"home"`.
+```javascript
+const HOME_QUERY = `
+  query HomeQuery($locale: SiteLocale!) {
+    articolo(locale: $locale, filter: { slug: { eq: "home" } }) {
+      title
+      description {
+        value
+      }
+    }
+  }
+`;
+```
+
+**Il Server Component e la Chiamata Dati**
+Estraiamo la lingua (`lang`) in modo asincrono dai `params` e la passiamo alla query GraphQL per recuperare i contenuti corretti.
+```javascript
+export default async function HomePage({ params }) {
+  const { lang } = await params;
+
+  const data = await performRequest(HOME_QUERY, {
+    variables: { locale: lang },
+  });
+```
+
+**Rendering e Gestione dei Fallback**
+Mostriamo i dati nella pagina, accertandoci di passare correttamente il valore `data.articolo.description` come variabile JavaScript (senza virgolette) al componente `StructuredText`.
+```javascript
+  return (
+    <main className="p-8 max-w-4xl mx-auto">
+      <h1 className="text-3xl font-bold mb-4">
+        {data?.articolo?.title || 'Home'}
+      </h1>
+      {data?.articolo?.description && (
+        <StructuredText data={data.articolo.description} />
+      )}
+    </main>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo di `src/app/[lang]/page.js`
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { StructuredText } from 'react-datocms';
@@ -100,7 +146,7 @@ export default async function HomePage({ params }) {
         {data?.articolo?.title || 'Home'}
       </h1>
       {data?.articolo?.description && (
-        <StructuredText data="{data.articolo.description}"/>
+        <StructuredText data={data.articolo.description} />
       )}
     </main>
   );
@@ -110,21 +156,71 @@ export default async function HomePage({ params }) {
 ---
 
 ### 4.2 Creazione del file `src/app/[lang]/[slug]/page.js`
+
 Creiamo la nuova sottocartella `[slug]` all'interno di `[lang]` e inseriamo un nuovo file `page.js`. Questo sarà il template per tutte le pagine interne del sito.
 
-**Cosa fa questo script:**
-Riceve sia la lingua (`lang`) sia l'ultima parte dell'URL (`slug`) dai parametri. Li passa a DatoCMS per cercare la pagina esatta. Se DatoCMS non trova alcun contenuto per quella combinazione, la funzione `notFound()` genererà automaticamente una pagina di Errore 404.
+**Import delle librerie e di notFound**
+Oltre alle solite dipendenze, importiamo `notFound` da `next/navigation`. Ci servirà per generare un errore 404 qualora lo slug non esista nel database.
+```javascript
+import { performRequest } from '@/lib/datocms';
+import { StructuredText } from 'react-datocms';
+import { notFound } from 'next/navigation';
+```
 
-**Codice Sorgente Completo:**
+**Definizione della Query GraphQL Dinamica**
+A differenza della Home, qui il filtro `eq` non è fisso, ma riceve una seconda variabile `$slug` che definiremo dinamicamente in base all'URL.
+```javascript
+const PAGE_BY_SLUG_QUERY = `
+  query PageBySlugQuery($locale: SiteLocale!, $slug: String!) {
+    articolo(locale: $locale, filter: { slug: { eq: $slug } }) {
+      title
+      description {
+        value
+      }
+    }
+  }
+`;
+```
 
+**Il Server Component e la Gestione Errori (404)**
+Estraiamo sia `lang` sia `slug` dai parametri. Eseguiamo la query passando entrambe le variabili. Se DatoCMS non restituisce alcun dato (ovvero lo slug non esiste), attiviamo la funzione `notFound()` per mostrare la pagina di errore di default.
+```javascript
+export default async function DynamicPage({ params }) {
+  const { lang, slug } = await params;
+
+  const data = await performRequest(PAGE_BY_SLUG_QUERY, {
+    variables: { locale: lang, slug },
+  });
+
+  // Se l'articolo non esiste, mostra errore 404
+  if (!data?.articolo) {
+    notFound();
+  }
+```
+
+**Rendering**
+Restituiamo la pagina compilata con i dati specifici dell'articolo richiesto.
+```javascript
+  return (
+    <main className="p-8 max-w-4xl mx-auto">
+      <h1 className="text-3xl font-bold mb-4">{data.articolo.title}</h1>
+      {data.articolo.description && (
+        <StructuredText data={data.articolo.description} />
+      )}
+    </main>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo di `src/app/[lang]/[slug]/page.js`
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { StructuredText } from 'react-datocms';
 import { notFound } from 'next/navigation';
 
 const PAGE_BY_SLUG_QUERY = `
-  query PageBySlugQuery($locale: SiteLocale!,$slug: String!) {
-    articolo(locale: $locale, filter: { slug: { eq:$slug } }) {
+  query PageBySlugQuery($locale: SiteLocale!, $slug: String!) {
+    articolo(locale: $locale, filter: { slug: { eq: $slug } }) {
       title
       description {
         value
@@ -149,7 +245,7 @@ export default async function DynamicPage({ params }) {
     <main className="p-8 max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold mb-4">{data.articolo.title}</h1>
       {data.articolo.description && (
-        <StructuredText data="{data.articolo.description}"/>
+        <StructuredText data={data.articolo.description} />
       )}
     </main>
   );
@@ -159,13 +255,101 @@ export default async function DynamicPage({ params }) {
 ---
 
 ### 4.3 Modifica del file `src/app/[lang]/layout.js`
-In questo file (già configurato in precedenza con Favicon, cache e selettore lingua), andiamo ad aggiornare il blocco del Menù di Navigazione. Dobbiamo calcolare dinamicamente i link affinché tengano conto della lingua attualmente visitata.
 
-**La logica introdotta:**
-Se l'URL in DatoCMS è `/`, il link generato diventerà `/${lang}` (es. `/it`). Per qualsiasi altra voce, comporrà la rotta completa (es. `/${lang}/chi-siamo`).
+In questo file andiamo ad aggiornare il blocco del Menù di Navigazione. Dobbiamo calcolare dinamicamente i link affinché tengano conto della lingua attualmente visitata.
 
-**Codice Sorgente Completo Aggiornato:**
+**Import e Query (Invariato dal modulo precedente)**
+Le funzioni di importazione, la query e la configurazione della cache per i metadati rimangono invariate.
+```javascript
+import { performRequest } from '@/lib/datocms';
+import { toNextMetadata } from 'react-datocms/seo';
+import { cache } from 'react';
+import Link from 'next/link';
+import '@/app/globals.css';
 
+const LAYOUT_QUERY = `
+  query LayoutQuery($locale: SiteLocale!) {
+    _site {
+      faviconMetaTags {
+        attributes
+        content
+        tag
+      }
+    }
+    allMenuItems(locale: $locale, orderBy: position_ASC) {
+      id
+      label
+      url
+    }
+  }
+`;
+
+const getLayoutData = cache(async (params) => {
+  const { lang } = await params;
+  try {
+    return await performRequest(LAYOUT_QUERY, {
+      variables: { locale: lang },
+    });
+  } catch (error) {
+    console.error('Errore nel recupero dati layout:', error);
+    return null;
+  }
+});
+
+export async function generateMetadata({ params }) {
+  const data = await getLayoutData(params);
+  return toNextMetadata(data?._site?.faviconMetaTags || []);
+}
+```
+
+**Layout Async e Calcolo Dinamico dei Link**
+Quando mappiamo le voci di menù, dobbiamo assicurarci di aggiungere il prefisso della lingua al percorso. Se l'URL da DatoCMS è `/`, generiamo `/${lang}`. Per tutti gli altri URL (es. `/contatti`), concateniamo stringhe per generare `/${lang}/contatti`.
+```javascript
+export default async function LocalizedLayout({ children, params }) {
+  const { lang } = await params;
+  const data = await getLayoutData(params);
+  const menuItems = data?.allMenuItems || [];
+
+  return (
+    <html lang={lang} className="h-full antialiased">
+      <body className="min-h-full flex flex-col bg-gray-950 text-gray-100">
+        <header className="p-4 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
+          
+          <nav className="flex gap-4 max-w-5xl">
+            {menuItems.map((item) => {
+              const localizedHref = item.url === '/' ? `/${lang}` : `/${lang}${item.url}`;
+              return (
+                <Link className="hover:underline text-sm font-medium text-gray-200" href={localizedHref} key={item.id}>
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+```
+
+**Rendering del Selettore Lingua**
+Costruiamo la porzione destra dell'header, stilizzando le classi del selettore lingua (IT / EN) per indicare visivamente in quale lingua ci troviamo in quel momento.
+```javascript
+          <div className="flex gap-2 text-sm font-semibold">
+            <Link className={`px-3 py-1 rounded transition ${lang === 'it' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/it">
+              IT
+            </Link>
+            <Link className={`px-3 py-1 rounded transition ${lang === 'en' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/en">
+              EN
+            </Link>
+          </div>
+        </header>
+
+        <main className="flex-grow">
+          {children}
+        </main>
+      </body>
+    </html>
+  );
+}
+```
+
+#### Ecco un codice d'esempio completo di `src/app/[lang]/layout.js`
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { toNextMetadata } from 'react-datocms/seo';
@@ -222,7 +406,7 @@ export default async function LocalizedLayout({ children, params }) {
             {menuItems.map((item) => {
               const localizedHref = item.url === '/' ? `/${lang}` : `/${lang}${item.url}`;
               return (
-                <Link className="hover:underline text-sm font-medium text-gray-200" href="{localizedHref}" key="{item.id}">
+                <Link className="hover:underline text-sm font-medium text-gray-200" href={localizedHref} key={item.id}>
                   {item.label}
                 </Link>
               );
@@ -231,10 +415,10 @@ export default async function LocalizedLayout({ children, params }) {
 
           {/* Selettore Lingua (Language Switcher) */}
           <div className="flex gap-2 text-sm font-semibold">
-            <Link ${lang="==" 'bg-blue-600 'bg-gray-800 'it' : ? className="{`px-3" hover:text-white'}`} href="/it" py-1 rounded text-gray-400 text-white' transition>
+            <Link className={`px-3 py-1 rounded transition ${lang === 'it' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/it">
               IT
             </Link>
-            <Link ${lang="==" 'bg-blue-600 'bg-gray-800 'en' : ? className="{`px-3" hover:text-white'}`} href="/en" py-1 rounded text-gray-400 text-white' transition>
+            <Link className={`px-3 py-1 rounded transition ${lang === 'en' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/en">
               EN
             </Link>
           </div>

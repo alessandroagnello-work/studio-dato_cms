@@ -63,7 +63,7 @@ npx datocms migrations:run --environment=develop
 
 ## 4. Configurazione del Client Next.js per Puntare all'Ambiente `develop`
 
-### 4.1 La Teoria: Come comunica Next.js con gli Ambienti di DatoCMS
+### 4.1 Come comunica Next.js con gli Ambienti di DatoCMS
 
 Quando Next.js invia una richiesta GraphQL alla Content Delivery API (CDA) di DatoCMS, l'SDK `@datocms/cda-client` include un'opzione di configurazione denominata `environment`. 
 
@@ -79,12 +79,19 @@ Per evitare di modificare manualmente il codice ogni volta che passiamo dallo sv
 
 ### 4.2 Modifica File 1: `.env.local`
 
-Questo file è stato creato nel Modulo 1 e risiede nella radice del progetto. Essendo ignorato da Git (`.gitignore`), è il posto perfetto per definire impostazioni specifiche per la nostra macchina locale.
+**Spiegazione: Dichiarazione del Token di Lettura**
+Iniziamo definendo il token di sicurezza Read-Only ottenuto dalla dashboard di DatoCMS. Questo permette a Next.js di autenticarsi con le API in sola lettura.
+```env
+NEXT_DATOCMS_API_TOKEN=tuo_read_only_api_token_qui
+```
 
-**Azione:** Aprire il file `.env.local` e aggiungere la variabile `NEXT_DATOCMS_ENVIRONMENT`.
+**Spiegazione: Impostazione dell'Ambiente Sandbox**
+Aggiungiamo la variabile d'ambiente per forzare le chiamate locali verso l'ambiente di test `develop`.
+```env
+NEXT_DATOCMS_ENVIRONMENT=develop
+```
 
-**Codice Sorgente Completo (`.env.local`):**
-
+#### Ecco un codice d'esempio di `.env.local`
 ```env
 # Token di lettura globale per l'API di DatoCMS
 NEXT_DATOCMS_API_TOKEN=tuo_read_only_api_token_qui
@@ -97,15 +104,30 @@ NEXT_DATOCMS_ENVIRONMENT=develop
 
 ### 4.3 Modifica File 2: `src/lib/datocms.js`
 
-Questo file (creato nel Modulo 1) centralizza la funzione `performRequest` utilizzata in tutte le pagine dell'applicazione per eseguire le query GraphQL.
+**Spiegazione: Importazione della libreria CDA**
+Importiamo la funzione `executeQuery` dal pacchetto ufficiale `@datocms/cda-client` installato nel Modulo 1.
+```javascript
+import { executeQuery } from '@datocms/cda-client';
+```
 
-**Azione:** Aggiornare la funzione passandole la nuova opzione `environment`.
+**Spiegazione: Struttura della funzione helper**
+Esportiamo la funzione `performRequest` che accetta la query GraphQL e le opzioni aggiuntive (variabili, tag di revalidazione, ecc.).
+```javascript
+export const performRequest = (query, options = {}) => {
+  return executeQuery(query, {
+    ...options,
+    token: process.env.NEXT_DATOCMS_API_TOKEN,
+```
 
-**Analisi delle Modifiche:**
-Iniettando `environment: process.env.NEXT_DATOCMS_ENVIRONMENT` dentro le opzioni di `executeQuery`, l'SDK leggerà automaticamente la variabile definita al punto 4.2. Se la variabile esiste (in locale), le query punteranno a `develop`; se non esiste (in produzione), l'SDK ignorerà la voce e punterà a `main`.
+**Spiegazione: Iniezione dell'Ambiente Dinamico**
+Aggiungiamo la voce `environment` passandole la variabile `process.env.NEXT_DATOCMS_ENVIRONMENT`. Se la variabile esiste nel file `.env.local` (in sviluppo), la chiamata interrogherà `develop`. Se la variabile non esiste (in produzione), l'SDK punterà automaticamente a `main`.
+```javascript
+    environment: process.env.NEXT_DATOCMS_ENVIRONMENT,
+  });
+};
+```
 
-**Codice Sorgente Completo (`src/lib/datocms.js`):**
-
+#### Ecco un codice d'esempio di `src/lib/datocms.js`
 ```javascript
 import { executeQuery } from '@datocms/cda-client';
 
@@ -125,3 +147,40 @@ export const performRequest = (query, options = {}) => {
   });
 };
 ```
+
+---
+
+## 5. Modellazione Visiva tramite GUI sulla Sandbox (`develop`)
+
+Quando si lavora tramite la dashboard di DatoCMS in presenza di più ambienti, è importante assicurarsi di essere posizionati sull'ambiente sandbox prima di apportare modifiche manuali allo Schema.
+
+### 5.1 Selezione dell'Ambiente nella Dashboard
+1. In alto a sinistra nella Dashboard di DatoCMS, cliccare sul menu a discesa degli ambienti (accanto al nome del progetto).
+2. Selezionare l'ambiente **`develop`**. Notare che l'interfaccia mostrerà un indicatore per segnalare che ci si trova in una Sandbox.
+
+### 5.2 Creazione di un nuovo Campo nello Schema
+Quando si aggiunge un nuovo campo a un Modello esistente o a un nuovo Modello:
+
+1. Navigare su **Schema** e selezionare il Modello desiderato.
+2. Cliccare su **Add new field**.
+3. Si aprirà la schermata **Choose a field type** contenente la griglia delle tipologie di campo:
+   * **Text (Giallo, in alto a sinistra):** Cliccare qui per inserire campi di testo. Si potrà poi scegliere tra *Single-line string* (titoli, brevi stringhe) o *Multiple-paragraph text* (testi lunghi/textarea).
+   * **Modular content (Viola):** Per creare blocchi dinamici e complessi.
+   * **Media (Verde):** Per immagini, video e file allegati.
+   * **Date and time (Arancione):** Per date di eventi o pubblicazioni.
+   * **SEO (Viola scuro):** Per meta tag, slug e permalink.
+   * **Links (Blu):** Per creare relazioni tra modelli differenti.
+4. Selezionare la tipologia desiderata (es. **Text** $\rightarrow$ **Single-line string**), assegnare il nome del campo (Field Label e API Key) e salvare.
+
+---
+
+## 6. Verifica dell'Integrazione in Next.js
+
+Dopo aver configurato `.env.local` e aggiornato `src/lib/datocms.js`:
+
+1. Avviare il server di sviluppo Next.js:
+   ```bash
+   npm run dev
+   ```
+2. Modificare un contenuto o aggiungere un campo unicamente nell'ambiente `develop` su DatoCMS.
+3. Ricaricare la pagina locale (`http://localhost:3000`). Next.js leggerà correttamente i dati aggiornati provenienti dalla Sandbox `develop`, lasciando totalmente inalterato l'ambiente `main` di produzione.
