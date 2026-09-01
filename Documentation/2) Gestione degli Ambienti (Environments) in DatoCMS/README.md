@@ -10,88 +10,127 @@
 ## 1. Il Concetto di Environment in DatoCMS
 
 ### Cosa sono e perché si usano
-Nei progetti web professionali, non si effettuano mai modifiche strutturali (come aggiungere nuovi campi, rimuovere modelli o cambiare le validazioni) direttamente sul database di produzione, per evitare di rompere il sito live mentre gli utenti lo stanno navigando.
+Nei progetti web professionali non si effettuano modifiche strutturali (come aggiungere campi o modelli) direttamente sul database di produzione per evitare di interrompere il sito live. DatoCMS permette di creare copie isolate dell'intero progetto chiamate **Environments**:
 
-Per risolvere questo problema, DatoCMS permette di creare delle copie esatte e totalmente isolate dell'intero progetto (Schema e Contenuti) chiamate **Environments**. 
-
-* **`main` (Primary Environment):** L'ambiente di produzione principale. È quello interrogato di default dall'applicazione live consultata dagli utenti finali.
-* **`develop` (Sandbox Environment):** Un ambiente di test isolato. Qui gli sviluppatori possono modificare lo schema, lanciare script di migrazione o testare nuove funzionalità in totale sicurezza, senza rischiare di danneggiare i dati del sito in produzione.
+* **`main` (Primary Environment):** L'ambiente di produzione principale. È quello interrogato di default dall'applicazione live.
+* **`develop` (Sandbox Environment):** L'ambiente di sviluppo condiviso dove testare codice e nuove funzionalità in sicurezza.
 
 ---
 
-## 2. Gestione degli Ambienti tramite DatoCMS CLI
+## 2. Creazione dell'Ambiente di Sviluppo (`develop`)
 
-### Creazione di un nuovo Ambiente Sandbox (`develop`)
-Per duplicare lo stato attuale dell'ambiente primario (`main`) e creare una sandbox isolata (che chiameremo `develop`):
+> **Prerequisito:** Esegui sempre i comandi da terminale all'interno della cartella radice del tuo progetto Next.js (`cd company-datocms-app`).
+
+### Creare la Sandbox `develop` da `main`
+Per duplicare lo stato attuale dell'ambiente primario (`main`) e creare l'ambiente `develop`:
 
 ```bash
 npx datocms environments:fork main develop
 ```
 
-### Visualizzazione degli Ambienti Attivi
-Per elencare tutti gli ambienti attualmente disponibili sul progetto cloud e identificare qual è l'ambiente primario attuale (contrassegnato dal tag `[primary]`):
+### Verificare gli Ambienti Attivi
+Per elencare gli ambienti disponibili e verificare quale ha il tag `PRIMARY`:
 
 ```bash
 npx datocms environments:list
 ```
 
-### Promozione e Rimozione
+---
 
-* **Promuovere l'ambiente `develop` ad ambiente primario (`main`):**
-  Quando i test nella sandbox sono conclusi con successo, possiamo sostituire l'ambiente di produzione con la sandbox selezionata.
-  ```bash
-  npx datocms environments:promote develop
-  ```
+## 3. Flusso di Lavoro Operativo: Sviluppo di una Feature (`task-1`)
 
-* **Eliminare un ambiente sandbox non più necessario:**
-  Rimuove definitivamente la sandbox, liberando gli slot di ambiente previsti dal piano del progetto su DatoCMS.
-  ```bash
-  npx datocms environments:destroy develop
-  ```
+Per lavorare su un nuovo ticket senza sporcare l'ambiente `develop` condiviso, si crea una sub-sandbox temporanea (es. `task-1`), si applicano le modifiche e infine si esegue il **Merge** su `develop`.
 
 ---
 
-## 3. Esecuzione dei Comandi CLI su uno Specifico Ambiente
-
-I comandi della CLI agiscono sempre, di default, sull'ambiente primario (`main`). Per dire alla CLI di applicare uno script di migrazione direttamente sulla sandbox di sviluppo, occorre esplicitare il comando passandogli il flag `--environment`:
+### Step 1: Creare la Sandbox del Ticket
+Clona l'ambiente `develop` per creare il tuo recinto di lavoro isolato `task-1`:
 
 ```bash
-npx datocms migrations:run --environment=develop
+npx datocms environments:fork develop task-1
 ```
 
 ---
 
-## 4. Configurazione del Client Next.js per Puntare all'Ambiente `develop`
-
-### 4.1 Come comunica Next.js con gli Ambienti di DatoCMS
-
-Quando Next.js invia una richiesta GraphQL alla Content Delivery API (CDA) di DatoCMS, l'SDK `@datocms/cda-client` include un'opzione di configurazione denominata `environment`. 
-
-* **Comportamento di Default:** Se la proprietà `environment` non viene specificata (o vale `undefined`), DatoCMS instrada automaticamente la chiamata verso l'ambiente **Primario** (`main`).
-* **Routing Dinamico verso la Sandbox:** Specificando la proprietà `environment: 'develop'`, il client API aggiunge un header HTTP di instradamento alla richiesta GraphQL. DatoCMS intercetta questo header e restituisce lo schema e i contenuti isolati della Sandbox `develop`.
-
-Per evitare di modificare manualmente il codice ogni volta che passiamo dallo sviluppo locale al deployment in produzione, gestiamo questo valore tramite le **variabili d'ambiente di Next.js** (`process.env`).
-
-* **Ambiente Locale (Sviluppo):** Il file `.env.local` imposterà `NEXT_DATOCMS_ENVIRONMENT=develop`. Tutte le chiamate fatte dal nostro computer punteranno alla Sandbox.
-* **Ambiente Server (Produzione / Vercel):** Non inseriremo questa variabile sul server di hosting. Risultando `undefined`, l'applicazione in produzione continuerà a servire i dati stabili dell'ambiente `main`.
+### Step 2: Modificare lo Schema da Dashboard Web (GUI)
+1. Apri la Dashboard Web di DatoCMS.
+2. Nel menu a tendina in alto a sinistra (*SWITCH TO*), passa all'ambiente **`task-1`**.
+3. Naviga su **Schema** $\rightarrow$ seleziona il Modello desiderato (es. `Page`) $\rightarrow$ clicca su **Add new field**.
+4. Aggiungi il nuovo campo (es. un campo testo `subtitle`) e salva.
 
 ---
 
-### 4.2 Modifica File 1: `.env.local`
+### Step 3: Autogenerare lo Script di Migrazione CLI
+Le modifiche fatte da Dashboard Web risiedono sul cloud. Per scaricare le differenze tra `task-1` e `develop` sotto forma di script `.js` locale, lancia:
 
-**Spiegazione: Dichiarazione del Token di Lettura**
-Iniziamo definendo il token di sicurezza Read-Only ottenuto dalla dashboard di DatoCMS. Questo permette a Next.js di autenticarsi con le API in sola lettura.
+```bash
+npx datocms migrations:new "add_subtitle_to_page" --autogenerate=task-1:develop
+```
+
+* **Cosa fa:** Confronta lo schema di `task-1` con quello di `develop` e crea un nuovo file `.js` nella cartella `./migrations/`.
+
+---
+
+### Step 4: Eseguire il Merge dello Schema su `develop`
+Applica lo script appena generato direttamente dentro l'ambiente condiviso `develop`:
+
+```bash
+npx datocms migrations:run --source=develop --in-place
+```
+
+* **`--source=develop`**: Specifica l'ambiente su cui applicare la migrazione.
+* **`--in-place`**: Modifica l'ambiente `develop` esistente in tempo reale senza creare sandbox temporanee di test.
+
+---
+
+### Step 5: Eliminare la Sandbox Temporanea
+Una volta che le modifiche di schema sono state unite su `develop`, elimina la sandbox `task-1` per liberare risorse:
+
+```bash
+npx datocms environments:destroy task-1
+```
+
+---
+
+## 4. Regola Fondamentale: SCHEMA vs CONTENUTO
+
+| Concetto | Cosa include | Come si trasferisce da `task-1` a `develop` |
+| :--- | :--- | :--- |
+| **SCHEMA (Struttura)** | Modelli, Campi, Validazioni, Tipi di dato. | **Script di Migrazione CLI** (`migrations:new` / `migrations:run`). |
+| **CONTENUTO (Dati)** | Testi dei campi, Articoli, Immagini caricate. | **Manualmente da Dashboard Web** (selezionando `develop` dal menu). |
+
+> **Nota sui Contenuti:** Il comando `--autogenerate` ignora i testi dei record. Se compili un testo di prova dentro `task-1`, questo serve solo per i tuoi test visivi locali. Il testo definitivo va inserito a mano da Dashboard selezionando l'ambiente `develop`.
+
+---
+
+## 5. Configurazione del Client Next.js per Puntare a `develop`
+
+### 5.1 Come funziona il Routing dell'Ambiente
+L'SDK `@datocms/cda-client` accetta il parametro `environment`:
+* **Se non specificato (`undefined`):** DatoCMS risponde con i dati dell'ambiente **`main`** (Produzione).
+* **Se impostato su `'develop'`:** DatoCMS risponde isolato con i dati della Sandbox **`develop`**.
+
+---
+
+### 5.2 Modifica File 1: `.env.local`
+
+**1. Spiegazione Concettuale**  
+Definiamo la chiave API globale per le chiamate GraphQL.
+
+**2. Estratto di Codice**  
 ```env
 NEXT_DATOCMS_API_TOKEN=tuo_read_only_api_token_qui
 ```
 
-**Spiegazione: Impostazione dell'Ambiente Sandbox**
-Aggiungiamo la variabile d'ambiente per forzare le chiamate locali verso l'ambiente di test `develop`.
+**3. Spiegazione Concettuale**  
+Definiamo la variabile che forza Next.js a leggere i dati dall'ambiente sandbox in locale.
+
+**4. Estratto di Codice**  
 ```env
 NEXT_DATOCMS_ENVIRONMENT=develop
 ```
 
-#### Ecco un codice d'esempio di `.env.local`
+**5. Codice Completo di `.env.local`**  
 ```env
 # Token di lettura globale per l'API di DatoCMS
 NEXT_DATOCMS_API_TOKEN=tuo_read_only_api_token_qui
@@ -102,32 +141,25 @@ NEXT_DATOCMS_ENVIRONMENT=develop
 
 ---
 
-### 4.3 Modifica File 2: `src/lib/datocms.js`
+### 5.3 Modifica File 2: `src/lib/datocms.js`
 
-**Spiegazione: Importazione della libreria CDA**
-Importiamo la funzione `executeQuery` dal pacchetto ufficiale `@datocms/cda-client` installato nel Modulo 1.
+**1. Spiegazione Concettuale**  
+Importiamo la funzione `executeQuery` dal pacchetto ufficiale `@datocms/cda-client`.
+
+**2. Estratto di Codice**  
 ```javascript
 import { executeQuery } from '@datocms/cda-client';
 ```
 
-**Spiegazione: Struttura della funzione helper**
-Esportiamo la funzione `performRequest` che accetta la query GraphQL e le opzioni aggiuntive (variabili, tag di revalidazione, ecc.).
+**3. Spiegazione Concettuale**  
+Passiamo la variabile d'ambiente `environment` nelle opzioni della funzione, così che l'SDK instradi le query in automatico.
+
+**4. Estratto di Codice**  
 ```javascript
-export const performRequest = (query, options = {}) => {
-  return executeQuery(query, {
-    ...options,
-    token: process.env.NEXT_DATOCMS_API_TOKEN,
+environment: process.env.NEXT_DATOCMS_ENVIRONMENT,
 ```
 
-**Spiegazione: Iniezione dell'Ambiente Dinamico**
-Aggiungiamo la voce `environment` passandole la variabile `process.env.NEXT_DATOCMS_ENVIRONMENT`. Se la variabile esiste nel file `.env.local` (in sviluppo), la chiamata interrogherà `develop`. Se la variabile non esiste (in produzione), l'SDK punterà automaticamente a `main`.
-```javascript
-    environment: process.env.NEXT_DATOCMS_ENVIRONMENT,
-  });
-};
-```
-
-#### Ecco un codice d'esempio di `src/lib/datocms.js`
+**5. Codice Completo di `src/lib/datocms.js`**  
 ```javascript
 import { executeQuery } from '@datocms/cda-client';
 
@@ -142,7 +174,6 @@ export const performRequest = (query, options = {}) => {
   return executeQuery(query, {
     ...options,
     token: process.env.NEXT_DATOCMS_API_TOKEN,
-    // Instrada la chiamata verso la Sandbox se definita nel file .env.local
     environment: process.env.NEXT_DATOCMS_ENVIRONMENT,
   });
 };
@@ -150,37 +181,30 @@ export const performRequest = (query, options = {}) => {
 
 ---
 
-## 5. Modellazione Visiva tramite GUI sulla Sandbox (`develop`)
+## 6. Rilascio Finale in Produzione e Rollback
 
-Quando si lavora tramite la dashboard di DatoCMS in presenza di più ambienti, è importante assicurarsi di essere posizionati sull'ambiente sandbox prima di apportare modifiche manuali allo Schema.
+Quando tutte le funzionalità su `develop` sono state collaudate con successo, è il momento di rilasciare le modifiche in Produzione su `main`.
 
-### 5.1 Selezione dell'Ambiente nella Dashboard
-1. In alto a sinistra nella Dashboard di DatoCMS, cliccare sul menu a discesa degli ambienti (accanto al nome del progetto).
-2. Selezionare l'ambiente **`develop`**. Notare che l'interfaccia mostrerà un indicatore per segnalare che ci si trova in una Sandbox.
+### 6.1 Promozione in Produzione (`develop` $\rightarrow$ `main`)
 
-### 5.2 Creazione di un nuovo Campo nello Schema
-Quando si aggiunge un nuovo campo a un Modello esistente o a un nuovo Modello:
+Esegui il comando di promozione:
 
-1. Navigare su **Schema** e selezionare il Modello desiderato.
-2. Cliccare su **Add new field**.
-3. Si aprirà la schermata **Choose a field type** contenente la griglia delle tipologie di campo:
-   * **Text (Giallo, in alto a sinistra):** Cliccare qui per inserire campi di testo. Si potrà poi scegliere tra *Single-line string* (titoli, brevi stringhe) o *Multiple-paragraph text* (testi lunghi/textarea).
-   * **Modular content (Viola):** Per creare blocchi dinamici e complessi.
-   * **Media (Verde):** Per immagini, video e file allegati.
-   * **Date and time (Arancione):** Per date di eventi o pubblicazioni.
-   * **SEO (Viola scuro):** Per meta tag, slug e permalink.
-   * **Links (Blu):** Per creare relazioni tra modelli differenti.
-4. Selezionare la tipologia desiderata (es. **Text** $\rightarrow$ **Single-line string**), assegnare il nome del campo (Field Label e API Key) e salvare.
+```bash
+npx datocms environments:promote develop
+```
+
+**Cosa succede sul cloud DatoCMS:**
+1. L'ambiente `develop` riceve il tag `PRIMARY` e diventa il **nuovo ambiente di produzione live**.
+2. Il vecchio ambiente `main` **non viene sovrascritto o cancellato**: viene automaticamente declassato a Sandbox di backup congelata.
 
 ---
 
-## 6. Verifica dell'Integrazione in Next.js
+### 6.2 Rollback Istantaneo in Caso di Errore
 
-Dopo aver configurato `.env.local` e aggiornato `src/lib/datocms.js`:
+Se subito dopo il rilascio riscontri un bug critico in produzione, puoi ripristinare la versione precedente in un secondo promossi di nuovo il vecchio ambiente `main`:
 
-1. Avviare il server di sviluppo Next.js:
-   ```bash
-   npm run dev
-   ```
-2. Modificare un contenuto o aggiungere un campo unicamente nell'ambiente `develop` su DatoCMS.
-3. Ricaricare la pagina locale (`http://localhost:3000`). Next.js leggerà correttamente i dati aggiornati provenienti dalla Sandbox `develop`, lasciando totalmente inalterato l'ambiente `main` di produzione.
+```bash
+npx datocms environments:promote main
+```
+
+*Il sito live tornerà istantaneamente a leggere dal backup precedente con zero downtime e senza alcuna perdita di dati.*
