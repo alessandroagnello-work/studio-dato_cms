@@ -518,14 +518,14 @@ npx datocms migrations:run --source=task-modulo-10 --in-place
 **1. Spiegazione Concettuale**  
 L'esecuzione della terza migrazione stabilisce l'associazione strutturale tra le due entità. Il vincolo di riferimento creato via script è direttamente riscontrabile nello schema del modello Nave.
 
-**2. Risultato Visivo nella Dashboard**
+**2. Risultato Visivo nella Dashboard**  
+Nell'interfaccia di amministrazione di DatoCMS, accedendo alla sezione **Schema** e selezionando il modello **Nave**, possiamo osservare il nuovo campo di collegamento generato dallo script di migrazione, evidenziato dalla freccia rossa.
 
 ![Schema del modello Nave con campo Single Link Porto di Appartenenza](../Screenshot%20documentazione/NaveModels1.png)
 
 Come mostrato nello screenshot dello Schema (`NaveModels1.png`):
 * **Sezione `Schema` (Modello `Nave`)**: Compare il nuovo campo relazionale **`Porto di Appartenenza`** (`porto`), contrassegnato con la tipologia **Single Link** e il riferimento esplicito `References -> Porto`.
 * **Configurazione delle Validazioni**: Cliccando sul campo e accedendo alla scheda *Validations*, la voce *Accept only specified model* risulta attiva sul modello *Porto*, garantendo il vincolo d'integrità relazionale inviato via CLI.
-
 
 _________________________________________________________________________________________________________
 
@@ -690,13 +690,17 @@ npx datocms migrations:run --source=task-modulo-10 --in-place
 **1. Spiegazione Concettuale**  
 Al termine della quarta migrazione, la dashboard aggiorna sia la struttura dello Schema (aggiungendo il Modular Content) sia la maschera di inserimento dei contenuti.
 
-**2. Risultato Visivo nello Schema e nel Form**
+**2. Risultato Visivo nello Schema**  
+Nella scheda **Schema** relativa al modello **Nave**, possiamo verificare l'aggiunta del campo di tipo Modular Content, contrassegnato dalla freccia rossa, che abilita il contenitore per i blocchi componibili.
 
 ![Schema del modello Nave con campo Modular Content Registro Manutenzioni](../Screenshot%20documentazione/NaveModels2.png)
 
 Come evidenziato nello screenshot dello Schema (`NaveModels2.png`):
 * **Sezione `Schema` $\rightarrow$ Modello `Nave`**: È presente il campo **`Registro Manutenzioni`** (`registro_manutenzioni`) configurato come **Modular Content (Multiple blocks)** con indicazione `Blocks -> Intervento Manutenzione`.
 * **Sezione `Schema` $\rightarrow$ Tab `Blocks`**: Compare il blocco componibile **`Intervento Manutenzione`** con i relativi campi `Data Intervento` e `Descrizione Intervento`.
+
+**3. Risultato Visivo nella Maschera di Editing (Content)**  
+Spostandoci nella sezione **Content** e avviando la creazione di un nuovo record per la raccolta **Nave**, la dashboard genera automaticamente la form completa con tutti gli input, i selettori di relazione e i pulsanti per l'inserimento dinamico dei blocchi.
 
 ![Maschera di inserimento record Nave con campo Single Link e Blocco Modulare](../Screenshot%20documentazione/NaveContent1.png)
 
