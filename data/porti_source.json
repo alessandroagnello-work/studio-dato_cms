@@ -1,0 +1,20 @@
+[
+  { 
+    "nome": "Porto di Genova", 
+    "citta": "Genova", 
+    "attivo": true,
+    "foto_url": "https://images.unsplash.com/photo-1534447677768-be436bb09401?fm=jpg&fit=crop&w=1000"
+  },
+  { 
+    "nome": "Porto di Gioia Tauro", 
+    "citta": "Gioia Tauro", 
+    "attivo": true,
+    "foto_url": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?fm=jpg&fit=crop&w=1000"
+  },
+  { 
+    "nome": "Porto di Trieste", 
+    "citta": "Trieste", 
+    "attivo": false,
+    "foto_url": "https://images.unsplash.com/photo-1518837695005-2083093ee35b?fm=jpg&fit=crop&w=1000"
+  }
+]

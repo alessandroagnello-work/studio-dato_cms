@@ -1,0 +1,43 @@
+[
+  {
+    "nome": "Vesuvio Express",
+    "codice_imo": "IMO9876543",
+    "capienza_passeggeri": 450,
+    "in_servizio": true,
+    "porto_nome": "Porto di Genova",
+    "attivo": true,
+    "manutenzioni": [
+      {
+        "data_intervento": "2026-02-10",
+        "descrizione": "Revisione ordinaria dei motori e sostituzione filtri."
+      }
+    ]
+  },
+  {
+    "nome": "Napoli Express",
+    "codice_imo": "IMO4739560",
+    "capienza_passeggeri": 500,
+    "in_servizio": true,
+    "porto_nome": "Porto di Genova",
+    "attivo": true,
+    "manutenzioni": []
+  },
+  {
+    "nome": "Tirreno Star",
+    "codice_imo": "IMO1234567",
+    "capienza_passeggeri": 300,
+    "in_servizio": true,
+    "porto_nome": "Porto di Gioia Tauro",
+    "attivo": true,
+    "manutenzioni": [
+      {
+        "data_intervento": "2026-01-20",
+        "descrizione": "Verniciatura antivegetativa dello scafo."
+      },
+      {
+        "data_intervento": "2026-03-01",
+        "descrizione": "Controllo sistemi radar e navigazione."
+      }
+    ]
+  }
+]
