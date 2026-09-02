@@ -45,20 +45,24 @@ La **CLI (Command Line Interface)** è un programma che ci permette di comunicar
    npx create-next-app@latest company-datocms-app
    ```
 
-## Una volta inserito il comando, ti farà una serie di domande, qui sotto metto cosa rispondere:
+  ## Una volta inserito il comando, ti farà una serie di domande, qui sotto metto cosa rispondere:
 
-✔ Would you like to use the recommended Next.js defaults? › No, customize settings
-✔ Would you like to use TypeScript? No 
-✔ Which linter would you like to use? › ESLint
-✔ Would you like to use React Compiler? … No
-✔ Would you like to use Tailwind CSS? Yes
-✔ Would you like your code inside a `src/` directory? Yes
-✔ Would you like to use App Router? (recommended) Yes
-✔ Would you like to customize the import alias (`@/*` by default)? No
 
-Opzionale:
+  1. Would you like to use the recommended Next.js defaults? › No, customize settings
+  2. Would you like to use TypeScript? No 
+  3. Which linter would you like to use? › ESLint
+  4. Would you like to use React Compiler? … No
+  5. Would you like to use Tailwind CSS? Yes
+  6. Would you like your code inside a `src/` directory? Yes
+  7. Would you like to use App Router? (recommended) Yes
+  8. Would you like to customize the import alias (`@/*` by default)? No
 
-✔ Would you like to include AGENTS.md to guide coding agents to write up-to-date Next.js code? Yes
+
+  Opzionale:
+
+  9. Would you like to include AGENTS.md to guide coding agents to write up-to-date Next.js code? Yes
+
+_______________________________________________________________________________________________________________________
 
 2. Entrare nella cartella del progetto appena generata:
 

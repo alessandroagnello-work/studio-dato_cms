@@ -1,3 +1,4 @@
+```markdown
 # Guida Tecnica (Modulo 6): Pagine Dinamiche ([slug]) e Multilingua
 
 ## Introduzione
@@ -43,21 +44,21 @@ Configuriamo i record nella sezione **Content** $\rightarrow$ **Articolo** compi
 | **Articolo** | Il mio primo articolo / My first article | `articolo` | `article` | Published |
 | **Contatti** | Contatti / Contacts | `contatti` | `contacts` | Published |
 
-> **Nota sul Modello Menu Item:** Nel modello `menu_item` creato nei moduli precedenti, i valori del campo `url` devono sempre iniziare con lo slash (es. `/`, `/articolo`, `/contatti`) e **non devono mai includere la lingua**. L'URL su DatoCMS rappresenta la rotta pura; il prefisso della lingua (es. `/it`) verrà iniettato dinamicamente da Next.js.
+> **Nota sul Modello Menu Item:** Nel modello `menu_item` creato nei moduli precedenti, i valori del campo `url` devono sempre iniziare con lo slash (es. `/`, `/articolo`, `/contatti`) e **non devono mai includere la lingua**. L'URL su DatoCMS rappresenta la rotta pura; il prefisso della lingua (es. `/it`) verrà iniettato dinamicamente dal layout globale creato nel Modulo 5.
 
 ---
 
 ## 3. Architettura Cartelle Next.js
 
-Per supportare questa logica, la nostra cartella `src/app/` dovrà avere questa architettura:
+Per supportare la gestione delle pagine dinamiche, la nostra cartella `src/app/` ha questa architettura:
 
 ```text
 src/app/
 └── [lang]/
-    ├── layout.js         <-- Layout con Menu tradotto e prefissi dinamici
-    ├── page.js           <-- Homepage statica per la rotta base (/it, /en)
+    ├── layout.js         <-- Layout globale multilingua (completato nel Modulo 5)
+    ├── page.js           <-- Homepage dinamica per la rotta base (/it, /en)
     └── [slug]/
-        └── page.js       <-- Template dinamico per tutte le altre pagine (/it/contatti, /en/contacts)
+        └── page.js       <-- Template dinamico per tutte le pagine interne (/it/contatti, /en/contacts)
 ```
 
 ---
@@ -68,15 +69,17 @@ src/app/
 
 Questo file gestisce la rotta radice della lingua (es. `localhost:3000/it`). Lo andiamo a modificare affinché recuperi dinamicamente l'articolo che fa da "Home".
 
-**Import delle librerie**
-Importiamo la funzione di fetch da DatoCMS e il componente per visualizzare i testi strutturati.
+**Pezzo 1: Import delle librerie**  
+Importiamo l'helper per la fetch dei dati da DatoCMS e il componente per la resa del testo strutturato.
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { StructuredText } from 'react-datocms';
 ```
+* **`performRequest`**: Utility personalizzata per eseguire richieste GraphQL verso DatoCMS.
+* **`StructuredText`**: Componente nativo di `react-datocms` per renderizzare i blocchi di testo formattato del CMS.
 
-**Definizione della Query GraphQL**
-Chiediamo a DatoCMS di restituire esclusivamente il record `articolo` in cui il campo `slug` è esattamente uguale (`eq`) a `"home"`.
+**Pezzo 2: Definizione della Query GraphQL**  
+Chiediamo a DatoCMS di restituire esclusivamente il record `articolo` in cui il campo `slug` è esattamente uguale (`eq`) a `"home"`, filtrando per la lingua corrente.
 ```javascript
 const HOME_QUERY = `
   query HomeQuery($locale: SiteLocale!) {
@@ -89,9 +92,11 @@ const HOME_QUERY = `
   }
 `;
 ```
+* **`$locale: SiteLocale!`**: Variabile per la lingua attiva richiesta dall'utente.
+* **`filter: { slug: { eq: "home" } }`**: Filtra l'articolo specifico avente slug `"home"`.
 
-**Il Server Component e la Chiamata Dati**
-Estraiamo la lingua (`lang`) in modo asincrono dai `params` e la passiamo alla query GraphQL per recuperare i contenuti corretti.
+**Pezzo 3: Il Server Component e la Chiamata Dati**  
+Estraiamo la lingua (`lang`) in modo asincrono dai `params` (in conformità con Next.js 16) e la passiamo alla query GraphQL.
 ```javascript
 export default async function HomePage({ params }) {
   const { lang } = await params;
@@ -100,9 +105,11 @@ export default async function HomePage({ params }) {
     variables: { locale: lang },
   });
 ```
+* **`await params`**: Risoluzione asincrona dei parametri dell'URL per estrarre la lingua corrente.
+* **`variables: { locale: lang }`**: Associa il valore dell'URL alla query GraphQL.
 
-**Rendering e Gestione dei Fallback**
-Mostriamo i dati nella pagina, accertandoci di passare correttamente il valore `data.articolo.description` come variabile JavaScript (senza virgolette) al componente `StructuredText`.
+**Pezzo 4: Rendering e Gestione dei Fallback**  
+Mostriamo i dati nella pagina, passando il valore `data.articolo.description` al componente `StructuredText`.
 ```javascript
   return (
     <main className="p-8 max-w-4xl mx-auto">
@@ -110,14 +117,16 @@ Mostriamo i dati nella pagina, accertandoci di passare correttamente il valore `
         {data?.articolo?.title || 'Home'}
       </h1>
       {data?.articolo?.description && (
-        <StructuredText data={data.articolo.description} />
+        <StructuredText data="{data.articolo.description}"/>
       )}
     </main>
   );
 }
 ```
+* **`{data?.articolo?.title || 'Home'}`**: Titolo della pagina con fallback in caso di dati mancanti.
+* **`<StructuredText data={...} />`**: Renderizza l'albero AST del contenuto della descrizione.
 
-#### Ecco un codice d'esempio completo di `src/app/[lang]/page.js`
+**Codice Completo di `src/app/[lang]/page.js`**
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { StructuredText } from 'react-datocms';
@@ -146,7 +155,7 @@ export default async function HomePage({ params }) {
         {data?.articolo?.title || 'Home'}
       </h1>
       {data?.articolo?.description && (
-        <StructuredText data={data.articolo.description} />
+        <StructuredText data="{data.articolo.description}"/>
       )}
     </main>
   );
@@ -159,20 +168,21 @@ export default async function HomePage({ params }) {
 
 Creiamo la nuova sottocartella `[slug]` all'interno di `[lang]` e inseriamo un nuovo file `page.js`. Questo sarà il template per tutte le pagine interne del sito.
 
-**Import delle librerie e di notFound**
-Oltre alle solite dipendenze, importiamo `notFound` da `next/navigation`. Ci servirà per generare un errore 404 qualora lo slug non esista nel database.
+**Pezzo 1: Import delle librerie e di notFound**  
+Importiamo le dipendenze per DatoCMS e la funzione `notFound` per gestire il fallimento della rotta.
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { StructuredText } from 'react-datocms';
 import { notFound } from 'next/navigation';
 ```
+* **`notFound`**: Funzione nativa di Next.js che interrompe il rendering e mostra la pagina di errore 404 del sistema.
 
-**Definizione della Query GraphQL Dinamica**
-A differenza della Home, qui il filtro `eq` non è fisso, ma riceve una seconda variabile `$slug` che definiremo dinamicamente in base all'URL.
+**Pezzo 2: Definizione della Query GraphQL Dinamica**  
+A differenza della Home, qui la query accetta due variabili: `$locale` per la lingua e `$slug` per identificare dinamicamente la pagina richiesta nell'URL.
 ```javascript
 const PAGE_BY_SLUG_QUERY = `
-  query PageBySlugQuery($locale: SiteLocale!, $slug: String!) {
-    articolo(locale: $locale, filter: { slug: { eq: $slug } }) {
+  query PageBySlugQuery($locale: SiteLocale!,$slug: String!) {
+    articolo(locale: $locale, filter: { slug: { eq:$slug } }) {
       title
       description {
         value
@@ -181,9 +191,11 @@ const PAGE_BY_SLUG_QUERY = `
   }
 `;
 ```
+* **`$slug: String!`**: Variabile dinamica ricevuta dai parametri dell'URL.
+* **`filter: { slug: { eq: $slug } }`**: Cerca nel database l'articolo con lo slug esatto corrispondente al percorso visitato.
 
-**Il Server Component e la Gestione Errori (404)**
-Estraiamo sia `lang` sia `slug` dai parametri. Eseguiamo la query passando entrambe le variabili. Se DatoCMS non restituisce alcun dato (ovvero lo slug non esiste), attiviamo la funzione `notFound()` per mostrare la pagina di errore di default.
+**Pezzo 3: Il Server Component e la Gestione Errori (404)**  
+Estraiamo sia `lang` sia `slug` dai parametri in modo asincrono. Se DatoCMS non restituisce alcun dato (articolo inesistente), attiviamo `notFound()`.
 ```javascript
 export default async function DynamicPage({ params }) {
   const { lang, slug } = await params;
@@ -197,30 +209,32 @@ export default async function DynamicPage({ params }) {
     notFound();
   }
 ```
+* **`const { lang, slug } = await params`**: Estrazione parallela di lingua e slug dell'URL (Next.js 16).
+* **`if (!data?.articolo) notFound()`**: Guardia di controllo che previene errori di rendering e restituisce uno status HTTP 404.
 
-**Rendering**
-Restituiamo la pagina compilata con i dati specifici dell'articolo richiesto.
+**Pezzo 4: Rendering della Pagina**  
+Restituiamo il layout visivo compilato con i dati specifici dell'articolo recuperato.
 ```javascript
   return (
     <main className="p-8 max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold mb-4">{data.articolo.title}</h1>
       {data.articolo.description && (
-        <StructuredText data={data.articolo.description} />
+        <StructuredText data="{data.articolo.description}"/>
       )}
     </main>
   );
 }
 ```
 
-#### Ecco un codice d'esempio completo di `src/app/[lang]/[slug]/page.js`
+**Codice Completo di `src/app/[lang]/[slug]/page.js`**
 ```javascript
 import { performRequest } from '@/lib/datocms';
 import { StructuredText } from 'react-datocms';
 import { notFound } from 'next/navigation';
 
 const PAGE_BY_SLUG_QUERY = `
-  query PageBySlugQuery($locale: SiteLocale!, $slug: String!) {
-    articolo(locale: $locale, filter: { slug: { eq: $slug } }) {
+  query PageBySlugQuery($locale: SiteLocale!,$slug: String!) {
+    articolo(locale: $locale, filter: { slug: { eq:$slug } }) {
       title
       description {
         value
@@ -245,190 +259,11 @@ export default async function DynamicPage({ params }) {
     <main className="p-8 max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold mb-4">{data.articolo.title}</h1>
       {data.articolo.description && (
-        <StructuredText data={data.articolo.description} />
+        <StructuredText data="{data.articolo.description}"/>
       )}
     </main>
   );
 }
 ```
 
----
-
-### 4.3 Modifica del file `src/app/[lang]/layout.js`
-
-In questo file andiamo ad aggiornare il blocco del Menù di Navigazione. Dobbiamo calcolare dinamicamente i link affinché tengano conto della lingua attualmente visitata.
-
-**Import e Query (Invariato dal modulo precedente)**
-Le funzioni di importazione, la query e la configurazione della cache per i metadati rimangono invariate.
-```javascript
-import { performRequest } from '@/lib/datocms';
-import { toNextMetadata } from 'react-datocms/seo';
-import { cache } from 'react';
-import Link from 'next/link';
-import '@/app/globals.css';
-
-const LAYOUT_QUERY = `
-  query LayoutQuery($locale: SiteLocale!) {
-    _site {
-      faviconMetaTags {
-        attributes
-        content
-        tag
-      }
-    }
-    allMenuItems(locale: $locale, orderBy: position_ASC) {
-      id
-      label
-      url
-    }
-  }
-`;
-
-const getLayoutData = cache(async (params) => {
-  const { lang } = await params;
-  try {
-    return await performRequest(LAYOUT_QUERY, {
-      variables: { locale: lang },
-    });
-  } catch (error) {
-    console.error('Errore nel recupero dati layout:', error);
-    return null;
-  }
-});
-
-export async function generateMetadata({ params }) {
-  const data = await getLayoutData(params);
-  return toNextMetadata(data?._site?.faviconMetaTags || []);
-}
-```
-
-**Layout Async e Calcolo Dinamico dei Link**
-Quando mappiamo le voci di menù, dobbiamo assicurarci di aggiungere il prefisso della lingua al percorso. Se l'URL da DatoCMS è `/`, generiamo `/${lang}`. Per tutti gli altri URL (es. `/contatti`), concateniamo stringhe per generare `/${lang}/contatti`.
-```javascript
-export default async function LocalizedLayout({ children, params }) {
-  const { lang } = await params;
-  const data = await getLayoutData(params);
-  const menuItems = data?.allMenuItems || [];
-
-  return (
-    <html lang={lang} className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-gray-950 text-gray-100">
-        <header className="p-4 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
-          
-          <nav className="flex gap-4 max-w-5xl">
-            {menuItems.map((item) => {
-              const localizedHref = item.url === '/' ? `/${lang}` : `/${lang}${item.url}`;
-              return (
-                <Link className="hover:underline text-sm font-medium text-gray-200" href={localizedHref} key={item.id}>
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-```
-
-**Rendering del Selettore Lingua**
-Costruiamo la porzione destra dell'header, stilizzando le classi del selettore lingua (IT / EN) per indicare visivamente in quale lingua ci troviamo in quel momento.
-```javascript
-          <div className="flex gap-2 text-sm font-semibold">
-            <Link className={`px-3 py-1 rounded transition ${lang === 'it' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/it">
-              IT
-            </Link>
-            <Link className={`px-3 py-1 rounded transition ${lang === 'en' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/en">
-              EN
-            </Link>
-          </div>
-        </header>
-
-        <main className="flex-grow">
-          {children}
-        </main>
-      </body>
-    </html>
-  );
-}
-```
-
-#### Ecco un codice d'esempio completo di `src/app/[lang]/layout.js`
-```javascript
-import { performRequest } from '@/lib/datocms';
-import { toNextMetadata } from 'react-datocms/seo';
-import { cache } from 'react';
-import Link from 'next/link';
-import '@/app/globals.css';
-
-const LAYOUT_QUERY = `
-  query LayoutQuery($locale: SiteLocale!) {
-    _site {
-      faviconMetaTags {
-        attributes
-        content
-        tag
-      }
-    }
-    allMenuItems(locale: $locale, orderBy: position_ASC) {
-      id
-      label
-      url
-    }
-  }
-`;
-
-const getLayoutData = cache(async (params) => {
-  const { lang } = await params;
-  try {
-    return await performRequest(LAYOUT_QUERY, {
-      variables: { locale: lang },
-    });
-  } catch (error) {
-    console.error('Errore nel recupero dati layout:', error);
-    return null;
-  }
-});
-
-export async function generateMetadata({ params }) {
-  const data = await getLayoutData(params);
-  return toNextMetadata(data?._site?.faviconMetaTags || []);
-}
-
-export default async function LocalizedLayout({ children, params }) {
-  const { lang } = await params;
-  const data = await getLayoutData(params);
-  const menuItems = data?.allMenuItems || [];
-
-  return (
-    <html lang={lang} className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-gray-950 text-gray-100">
-        <header className="p-4 border-b border-gray-800 bg-gray-900 flex justify-between items-center">
-          
-          {/* Menù di Navigazione Tradotto con prefisso dinamico lingua */}
-          <nav className="flex gap-4 max-w-5xl">
-            {menuItems.map((item) => {
-              const localizedHref = item.url === '/' ? `/${lang}` : `/${lang}${item.url}`;
-              return (
-                <Link className="hover:underline text-sm font-medium text-gray-200" href={localizedHref} key={item.id}>
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Selettore Lingua (Language Switcher) */}
-          <div className="flex gap-2 text-sm font-semibold">
-            <Link className={`px-3 py-1 rounded transition ${lang === 'it' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/it">
-              IT
-            </Link>
-            <Link className={`px-3 py-1 rounded transition ${lang === 'en' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'}`} href="/en">
-              EN
-            </Link>
-          </div>
-        </header>
-
-        <main className="flex-grow">
-          {children}
-        </main>
-      </body>
-    </html>
-  );
-}
 ```
