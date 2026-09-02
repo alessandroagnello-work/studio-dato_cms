@@ -9,6 +9,23 @@
 
 ---
 
+## Premessa Teorica: Script di Migrazione vs Data Seeding
+
+Prima di eseguire i comandi da CLI, è fondamentale comprendere la distinzione tra **Migrazioni** e **Seeding** nell'architettura di un Headless CMS:
+
+| Concetto | Migrazione (Migration) | Seeding (Data Seeder) |
+| :--- | :--- | :--- |
+| **Scopo** | Definire ed evolvere lo **Schema** (la struttura). | Popolare i **Dati** (i contenuti reali o di test). |
+| **Cosa crea/modifica** | Modelli (*Item Types*), Campi (*Fields*), Validazioni e Blocchi Modulari. | Record individuali (*Items*), Asset multimediali (*Uploads*) e Relazioni tra record. |
+| **Quando si usa** | Ad ogni evoluzione architetturale o modifica del database. | In fase di setup iniziale, test in sandbox, ambienti di staging o sviluppo locale. |
+| **Analogia** | Progettare e costruire le pareti e l'impianto elettrico di un edificio. | Arredare le stanze portando mobili, oggetti ed elettrodomestici. |
+
+* **Script di Migrazione**: File di codice (identificati da un timestamp sequenziale) che consentono di tracciare le modifiche allo schema su Git. Garantiscono che ogni sviluppatore del team e ogni ambiente cloud (sviluppo, staging, produzione) possiedano esattamente la stessa struttura dati senza dover configurare nulla manualmente da interfaccia grafica.
+* **Script di Seeding**: Script che automatizzano l'inserimento programmatico dei dati. Invece di compilare form a mano nella Dashboard, lo script crea i record di test, carica le immagini nella Media Library e collega le entità via API. 
+*(Nota: In DatoCMS i seeder non hanno una cartella dedicata, ma vengono eseguiti tramite la stessa cartella e gli stessi comandi CLI delle migrazioni).*
+
+---
+
 ## 1. Creazione dei Modelli Custom via CLI (Porto e Nave)
 
 Per creare la struttura del database tramite codice, DatoCMS utilizza gli **Script di Migrazione**. A differenza della modalità con flag `--autogenerate`, in questo caso definiamo le istruzioni programmaticamente tramite la Content Management API (CMA).
@@ -98,7 +115,7 @@ Proseguiamo nello stesso script per definire l'entità "Nave".
 'use strict';
 
 /**
- * Script di migrazione per la creazione programmatic dei modelli Porto e Nave.
+ * Script di migrazione per la creazione programmatica dei modelli Porto e Nave.
  */
 module.exports = async (client) => {
   // 1. Creazione del Modello "Porto"
@@ -527,8 +544,7 @@ Come mostrato nello screenshot dello Schema (`NaveModels1.png`):
 * **Sezione `Schema` (Modello `Nave`)**: Compare il nuovo campo relazionale **`Porto di Appartenenza`** (`porto`), contrassegnato con la tipologia **Single Link** e il riferimento esplicito `References -> Porto`.
 * **Configurazione delle Validazioni**: Cliccando sul campo e accedendo alla scheda *Validations*, la voce *Accept only specified model* risulta attiva sul modello *Porto*, garantendo il vincolo d'integrità relazionale inviato via CLI.
 
-_________________________________________________________________________________________________________
-
+---
 
 ## 4. Organizzazione dei Campi: Fieldset Visivi vs Blocchi Modulari Replicabili
 
@@ -708,3 +724,217 @@ Come mostrato nell'interfaccia di editing dei contenuti (`NaveContent1.png`):
 1. **Campi Base**: Input per `Nome Nave*`, `Codice IMO*` (con validatore di unicità attivo), `Capienza Passeggeri` (con limite $min \ge 1$), e l'interruttore `In Servizio`.
 2. **Relazione Single Link**: Il campo `Porto di Appartenenza` mette a disposizione i pulsanti **`+ New Porto`** e **`From library`** per collegare i record della collezione Porto.
 3. **Blocco Modulare Replicabile**: Il campo `Registro Manutenzioni` include il pulsante **`+ New Intervento Manutenzione`**, abilitando l'inserimento dinamico di $0..N$ log di manutenzione all'interno dello stesso record.
+
+---
+
+## 5. Seeding Data: Popolamento Programmatico dei Dati via CLI
+
+Dopo aver definito lo schema, popoliamo la sandbox con dati reali tramite uno script di migrazione dedicato. In questo passaggio vedremo come gestire l'upload programmatico di file multimediali, la creazione dei record parent (Porto), l'inserimento dei record child (Nave) e la pubblicazione forzata per evitare di dover cliccare "Publish" manualmente nella Dashboard.
+
+---
+
+### 5.1 Generazione del file di migrazione per il seeding
+
+**1. Spiegazione Concettuale**  
+Generiamo uno script di migrazione che conterrà le istruzioni CMA per creare gli asset e i record di test.
+
+**2. Estratto di Codice**  
+```bash
+npx datocms migrations:new "seed_ports_and_ships_data"
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`migrations:new`**: Comando CLI per creare il file vuoto nella cartella `./migrations`.
+* **`"seed_ports_and_ships_data"`**: Identificatore descrittivo dello script di popolamento.
+
+---
+
+### 5.2 Caricamento di Asset Media e Creazione dei Record "Porto"
+
+**1. Spiegazione Concettuale**  
+Per compilare il campo `foto_copertina`, utilizziamo `client.uploads.createFromUrl()` che scarica un'immagine remota e la registra nella Media Library di DatoCMS. Utilizziamo poi l'ID dell'asset restituito per creare il primo record Porto. Infine, utilizziamo il comando `client.items.publish()` per pubblicare il record, aggirando così lo stato di bozza.
+
+**2. Estratto di Codice**  
+```javascript
+// 1. Caricamento Asset nella Media Library
+const coverPhoto = await client.uploads.createFromUrl({
+  url: '[https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86](https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86)',
+  filename: 'porto-napoli.jpg',
+  skipValidation: true,
+});
+
+// 2. Creazione Record Porto (Stato Iniziale: Bozza/Draft)
+const portModel = await client.itemTypes.find('port');
+
+const portNapoli = await client.items.create({
+  item_type: { type: 'item_type', id: portModel.id },
+  nome: 'Porto di Napoli',
+  citta: 'Napoli',
+  foto_copertina: {
+    upload_id: coverPhoto.id,
+  },
+});
+
+// 3. Pubblicazione Forzata via API
+await client.items.publish(portNapoli.id);
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`client.uploads.createFromUrl`**: Metodo CMA per importare asset multimediali da sorgenti esterne.
+* **`upload_id`**: Identificatore univoco della risorsa caricata nella Media Library, richiesto per valorizzare i campi di tipo `file`.
+* **`client.items.create`**: Metodo CMA per inserire un nuovo record (contenuto).
+* **`client.items.publish(id)`**: Metodo per forzare la pubblicazione di un record specifico, evitando interventi manuali nell'interfaccia.
+
+---
+
+### 5.3 Creazione del Record "Nave" con Relazione e Blocchi Modulari
+
+**1. Spiegazione Concettuale**  
+Creiamo un record Nave associando:
+* L'ID del porto creato in precedenza nel campo `porto` (Single Link).
+* Un array di oggetti nel campo `registro_manutenzioni` (Modular Content), definendo la struttura interna dei blocchi.
+* Effettuiamo la pubblicazione finale del record generato.
+
+**2. Estratto di Codice**  
+```javascript
+const shipModel = await client.itemTypes.find('ship');
+const maintenanceBlock = await client.itemTypes.find('maintenance_entry');
+
+const naveVesuvio = await client.items.create({
+  item_type: { type: 'item_type', id: shipModel.id },
+  nome: 'Vesuvio Express',
+  codice_imo: 'IMO9876543',
+  capienza_passeggeri: 450,
+  in_servizio: true,
+  porto: portNapoli.id, // Collegamento Single Link al Porto
+  registro_manutenzioni: [
+    {
+      type: 'item',
+      attributes: {
+        data_intervento: '2026-01-15',
+        descrizione: 'Ispezione periodica dei motori e manutenzione scafo.',
+      },
+      relationships: {
+        item_type: {
+          data: { type: 'item_type', id: maintenanceBlock.id },
+        },
+      },
+    },
+  ],
+});
+
+// Pubblicazione Forzata via API
+await client.items.publish(naveVesuvio.id);
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`porto: portNapoli.id`**: Assegna l'ID del record parent per soddisfare la relazione 1:N.
+* **`registro_manutenzioni`**: Array di oggetti che rappresenta il contenuto del blocco modulare.
+* **`type: 'item'`**: Identifica l'elemento come blocco inline di contenuto.
+* **`item_type: { data: { type: 'item_type', id: maintenanceBlock.id } }`**: Specifica l'ID dello schema del Blocco Modulare da istanziare.
+
+---
+
+### 5.4 Codice Completo dello Script (`migrations/XXXXX_seed_ports_and_ships_data.js`)
+
+```javascript
+'use strict';
+
+/**
+ * Script di migrazione per il seeding dei dati (Porti, Navi, Asset e Blocchi Modulari).
+ * Include la pubblicazione forzata per bypassare lo stato Draft.
+ */
+module.exports = async (client) => {
+  // 1. Recupero dei modelli e blocchi esistenti
+  const portModel = await client.itemTypes.find('port');
+  const shipModel = await client.itemTypes.find('ship');
+  const maintenanceBlock = await client.itemTypes.find('maintenance_entry');
+
+  // 2. Upload dell'immagine di copertina
+  const coverPhoto = await client.uploads.createFromUrl({
+    url: '[https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86](https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86)',
+    filename: 'porto-napoli.jpg',
+    skipValidation: true,
+  });
+
+  // 3. Creazione Record "Porto di Napoli"
+  const portNapoli = await client.items.create({
+    item_type: { type: 'item_type', id: portModel.id },
+    nome: 'Porto di Napoli',
+    citta: 'Napoli',
+    foto_copertina: {
+      upload_id: coverPhoto.id,
+    },
+  });
+
+  // Pubblicazione immediata del Porto
+  await client.items.publish(portNapoli.id);
+
+  // 4. Creazione Record "Nave Vesuvio Express" legata a Napoli
+  const naveVesuvio = await client.items.create({
+    item_type: { type: 'item_type', id: shipModel.id },
+    nome: 'Vesuvio Express',
+    codice_imo: 'IMO9876543',
+    capienza_passeggeri: 450,
+    in_servizio: true,
+    porto: portNapoli.id,
+    registro_manutenzioni: [
+      {
+        type: 'item',
+        attributes: {
+          data_intervento: '2026-01-15',
+          descrizione: 'Ispezione periodica dei motori e manutenzione scafo.',
+        },
+        relationships: {
+          item_type: {
+            data: { type: 'item_type', id: maintenanceBlock.id },
+          },
+        },
+      },
+    ],
+  });
+
+  // Pubblicazione immediata della Nave
+  await client.items.publish(naveVesuvio.id);
+};
+```
+
+---
+
+### 5.5 Esecuzione dello script sulla Sandbox
+
+**1. Spiegazione Concettuale**  
+Applichiamo la migrazione di seeding per popolare la nostra sandbox in maniera automatica.
+
+**2. Estratto di Codice**  
+```bash
+npx datocms migrations:run --source=task-modulo-10 --in-place
+```
+
+---
+
+### 5.6 Risultato Atteso e Verifica nella Dashboard (Punto 5)
+
+**1. Spiegazione Concettuale**  
+Al termine della migrazione di seeding, le tabelle della sezione **Content** non saranno più vuote ma ospiteranno i record generati dallo script, già visibili al pubblico e non in stato di bozza.
+
+**2. Verifica Visiva - Collezione "Porto"**  
+Accedendo alla raccolta **Porto**, troverai la riga del record **Porto di Napoli** con il pallino verde che ne certifica lo stato *Published*.
+
+![Elenco record nella collezione Porto](../Screenshot%20documentazione/PortoPreview1.png)
+
+Entrando nel dettaglio del record tramite la schermata di edit, potrai verificare la corretta associazione dei dati testuali e l'immagine di copertina regolarmente scaricata e caricata via API.
+
+![Maschera di modifica del record Porto di Napoli](../Screenshot%20documentazione/PortoContents1.png)
+
+**3. Verifica Visiva - Collezione "Nave"**  
+Nella raccolta **Nave** comparirà la riga del record **Vesuvio Express**, anch'esso nello stato *Published*.
+
+![Elenco record nella collezione Nave](../Screenshot%20documentazione/NavePreview1.png)
+
+Aprendo in modifica il record, potrai constatare l'avvenuto inserimento di tutti i dati complessi:
+* I campi anagrafici sono popolati.
+* Il campo relazionale *Porto di Appartenenza* espone il collegamento Single Link generato verso il record "Porto di Napoli".
+* Nel blocco *Registro Manutenzioni* è presente il primo log d'intervento configurato via script, regolarmente valorizzato con data e descrizione.
+
+![Maschera di modifica del record Vesuvio Express con relazioni e blocchi](../Screenshot%20documentazione/NaveModel2.png)
