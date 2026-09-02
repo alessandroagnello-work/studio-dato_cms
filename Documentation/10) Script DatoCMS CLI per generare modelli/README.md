@@ -513,20 +513,18 @@ npx datocms migrations:run --source=task-modulo-10 --in-place
 
 ---
 
-### 3.5 Risultato Atteso e Verifica della Reference nella Dashboard (Punto 3)
+### 3.5 Risultato Atteso e Verifica nella Dashboard (Punto 3)
 
 **1. Spiegazione Concettuale**  
-L'esecuzione della terza migrazione stabilisce l'associazione strutturale tra le due entità. Il vincolo di riferimento creato via script è direttamente riscontrabile nel pannello di configurazione del campo.
+L'esecuzione della terza migrazione stabilisce l'associazione strutturale tra le due entità. Il vincolo di riferimento creato via script è direttamente riscontrabile nello schema del modello Nave.
 
-**2. Risultato Visivo e Localizzazione della Reference**
+**2. Risultato Visivo nella Dashboard**
 
-* **Sezione `Schema` (Modello `Nave`)**: Nella lista dei campi del modello Nave compare il nuovo campo relazionale **`Porto di Appartenenza`** (`porto`), contrassegnato con la tipologia **Single Link**.
+![Schema del modello Nave con campo Single Link Porto di Appartenenza](../Screenshot%20documentazione/NaveModels1.png)
 
-* **Verifica della Reference (`Edit field` $\rightarrow$ `Validations`)**: Cliccando sul campo **Porto di Appartenenza** e aprendo la scheda **Validations** della schermata di modifica, è possibile verificare la presenza della casella spuntata **`Accept only specified model`** con associato il tag del modello 
-
-**`Porto`**. Questo dimostra che il validatore `item_item_type: { item_types: [portModel.id] }` inviato dalla CLI ha correttamente ristretto l'associazione alle sole entità di tipo Porto.
-
-* **Sezione `Content` (Form di creazione `Nave`)**: Creando una nuova Nave, la maschera d'inserimento mostrerà il widget di selezione relazionale collegato alla collezione **Porto**.
+Come mostrato nello screenshot dello Schema (`NaveModels1.png`):
+* **Sezione `Schema` (Modello `Nave`)**: Compare il nuovo campo relazionale **`Porto di Appartenenza`** (`porto`), contrassegnato con la tipologia **Single Link** e il riferimento esplicito `References -> Porto`.
+* **Configurazione delle Validazioni**: Cliccando sul campo e accedendo alla scheda *Validations*, la voce *Accept only specified model* risulta attiva sul modello *Porto*, garantendo il vincolo d'integrità relazionale inviato via CLI.
 
 
 _________________________________________________________________________________________________________
@@ -690,17 +688,19 @@ npx datocms migrations:run --source=task-modulo-10 --in-place
 ### 4.6 Risultato Atteso e Verifica nella Dashboard (Punto 4)
 
 **1. Spiegazione Concettuale**  
-Al termine della migrazione, la dashboard offrirà una sezione dedicata alla gestione dei blocchi componibili e aggiornerà il form di inserimento del modello `Nave`.
+Al termine della quarta migrazione, la dashboard aggiorna sia la struttura dello Schema (aggiungendo il Modular Content) sia la maschera di inserimento dei contenuti.
 
-**2. Risultato Visivo e Localizzazione del Blocco Replicabile**
-* **Sezione `Schema` $\rightarrow$ Tab `Blocks`**: Sotto la voce Blocks comparirà la nuova entità **`Intervento Manutenzione`** (`maintenance_entry`) contenente i campi `Data Intervento` e `Descrizione Intervento`.
-* **Sezione `Schema` $\rightarrow$ Modello `Nave`**: Nello schema del modello Nave sarà presente il campo **`Registro Manutenzioni`** (`registro_manutenzioni`) configurato come **Modular Content**.
-* **Sezione `Content` (Raccolta `Nave`)**: La tabella principale continuerà a mostrare il messaggio *"This collection is empty"*. Questo è **assolutamente normale**, poiché finora abbiamo costruito solo l'impalcatura (lo Schema) e non abbiamo ancora inserito dati reali (Record).
-* **Verifica del Form (Creazione Record)**: Cliccando sul pulsante blu **`Create a new record`** all'interno della raccolta Nave, si aprirà la maschera di inserimento completa.
+**2. Risultato Visivo nello Schema e nel Form**
 
-![Maschera di inserimento record Nave con campo Single Link e Blocco Modulare](../Screenshot%20documentazione/NaveContent.png)
+![Schema del modello Nave con campo Modular Content Registro Manutenzioni](../Screenshot%20documentazione/NaveModels2.png)
 
-Come evidenziato nello screenshot sopra (`NaveContent.png`), l'editor troverà l'interfaccia di inserimento completa:
+Come evidenziato nello screenshot dello Schema (`NaveModels2.png`):
+* **Sezione `Schema` $\rightarrow$ Modello `Nave`**: È presente il campo **`Registro Manutenzioni`** (`registro_manutenzioni`) configurato come **Modular Content (Multiple blocks)** con indicazione `Blocks -> Intervento Manutenzione`.
+* **Sezione `Schema` $\rightarrow$ Tab `Blocks`**: Compare il blocco componibile **`Intervento Manutenzione`** con i relativi campi `Data Intervento` e `Descrizione Intervento`.
+
+![Maschera di inserimento record Nave con campo Single Link e Blocco Modulare](../Screenshot%20documentazione/NaveContent1.png)
+
+Come mostrato nell'interfaccia di editing dei contenuti (`NaveContent1.png`):
 1. **Campi Base**: Input per `Nome Nave*`, `Codice IMO*` (con validatore di unicità attivo), `Capienza Passeggeri` (con limite $min \ge 1$), e l'interruttore `In Servizio`.
-2. **Relazione Single Link**: Il campo `Porto di Appartenenza` con il selettore integrato e i pulsanti **`+ New Porto`** e **`From library`** per collegare i record della collezione Porto.
-3. **Blocco Modulare Replicabile**: Il campo `Registro Manutenzioni` corredato dal pulsante **`+ New Intervento Manutenzione`**, che abilita l'inserimento dinamico di $0..N$ log di manutenzione all'interno dello stesso record.
+2. **Relazione Single Link**: Il campo `Porto di Appartenenza` mette a disposizione i pulsanti **`+ New Porto`** e **`From library`** per collegare i record della collezione Porto.
+3. **Blocco Modulare Replicabile**: Il campo `Registro Manutenzioni` include il pulsante **`+ New Intervento Manutenzione`**, abilitando l'inserimento dinamico di $0..N$ log di manutenzione all'interno dello stesso record.
