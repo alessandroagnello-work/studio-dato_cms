@@ -943,7 +943,7 @@ Aprendo in modifica il record, potrai constatare l'avvenuto inserimento di tutti
 
 ## 6. Importazione Massiva di Dati Reali (Script Standalone)
 
-In scenari aziendali (es. l'integrazione con un gestionale navale), i dati non vengono inseriti manualmente né tramite le classiche "migrazioni" una tantum. L'approccio corretto prevede l'utilizzo di **Script Node.js Standalone**, slegati dalla cartella `./migrations`, che possono essere eseguiti su richiesta o tramite processi automatici notturni (Cron Jobs) per sincronizzare il database aziendale con il CMS.
+In scenari aziendali (es. l'integrazione con un gestionale navale), i dati non vengono inseriti manualmente né tramite le classiche "migrazioni" una tantum. L'approccio corretto prevede l'utilizzo di **Script Node.js Standalone**, slegati dalla cartella `./migrations`, che possono essere eseguiti su richiesta o tramite processi automatici per sincronizzare il database aziendale con il CMS.
 
 ### Logica dell'Importazione: Insert, Update e Idempotenza
 
@@ -961,15 +961,15 @@ Questo comportamento rende lo script **Idempotente**: eseguire lo script una vol
 
 **1. Spiegazione Concettuale e Nota Architetturale**  
 Per comunicare con DatoCMS al di fuori della CLI delle migrazioni, dobbiamo installare il client ufficiale per Node.js in scrittura. 
-* **Perché lo installiamo ora?** Negli script di migrazione (Punti 1-5), non abbiamo importato questo pacchetto perché il comando `npx datocms migrations:run` inietta automaticamente il client nello script. Trattandosi qui di uno script Node.js indipendente con lo scopo di *scrivere* in modo massivo, dobbiamo installare esplicitamente il pacchetto **CMA** (*Content Management API*) e instanziarlo manualmente passandogli il token.
+* **Perché lo installiamo ora?** Negli script di migrazione, il comando `npx datocms migrations:run` inietta automaticamente il client nello script. Trattandosi qui di script Node.js indipendenti, dobbiamo installare esplicitamente il pacchetto **CMA** (*Content Management API*).
 
 **2. Installazione (Terminale)**
 ```bash
 npm install @datocms/cma-client-node
 ```
 
-**3. Preparazione della cartella `data` e del file JSON sorgente (`./data/porti_source.json`)**  
-Crea una cartella denominata `data` nella root del progetto (allo stesso livello di `src` o `Documentation`).
+**3. Preparazione della cartella `data` e dei file JSON sorgente**  
+Crea una cartella denominata `data` nella root del progetto (allo stesso livello di `src`).
 
 Struttura in questa fase:
 ```text
@@ -982,8 +982,33 @@ Struttura in questa fase:
   .env.local
 ```
 
-Al suo interno, crea il file `porti_source.json` contenente i dati e i riferimenti alle immagini dei porti (puoi specificare sia URL remoti che percorsi di cartelle locali):
+Puoi specificare sia URL web diretti completi di parametri di formato, sia percorsi a file in cartelle locali come `./data/images/gioia_tauro.jpg`.
 
+**Esempio 1: File sorgente con soli URL Remoti (`data/porti_source.json`)**
+```json
+[
+  { 
+    "nome": "Porto di Genova", 
+    "citta": "Genova", 
+    "attivo": true,
+    "foto_url": "[https://images.unsplash.com/photo-1534447677768-be436bb09401?fm=jpg&fit=crop&w=1000](https://images.unsplash.com/photo-1534447677768-be436bb09401?fm=jpg&fit=crop&w=1000)"
+  },
+  { 
+    "nome": "Porto di Gioia Tauro", 
+    "citta": "Gioia Tauro", 
+    "attivo": true,
+    "foto_url": "[https://images.unsplash.com/photo-1507525428034-b723cf961d3e?fm=jpg&fit=crop&w=1000](https://images.unsplash.com/photo-1507525428034-b723cf961d3e?fm=jpg&fit=crop&w=1000)"
+  },
+  { 
+    "nome": "Porto di Trieste", 
+    "citta": "Trieste", 
+    "attivo": false,
+    "foto_url": "[https://images.unsplash.com/photo-1518837695005-2083093ee35b?fm=jpg&fit=crop&w=1000](https://images.unsplash.com/photo-1518837695005-2083093ee35b?fm=jpg&fit=crop&w=1000)"
+  }
+]
+```
+
+**Esempio 2: File sorgente misto (URL Remoti + Path Locale + Flessibilità Chiavi `foto_src`/`foto_url`)**
 ```json
 [
   { 
@@ -996,309 +1021,18 @@ Al suo interno, crea il file `porti_source.json` contenente i dati e i riferimen
     "nome": "Porto di Gioia Tauro", 
     "citta": "Gioia Tauro", 
     "attivo": true,
-    "foto_src": "./data/images/gioia_tauro.jpg"
+    "foto_url": "./data/images/gioia_tauro.jpg"
   },
   { 
     "nome": "Porto di Trieste", 
     "citta": "Trieste", 
     "attivo": false,
-    "foto_src": "[https://images.unsplash.com/photo-1518837695005-2083093ee35b?fm=jpg&fit=crop&w=1000](https://images.unsplash.com/photo-1518837695005-2083093ee35b?fm=jpg&fit=crop&w=1000)"
+    "foto_url": "[https://images.unsplash.com/photo-1518837695005-2083093ee35b?fm=jpg&fit=crop&w=1000](https://images.unsplash.com/photo-1518837695005-2083093ee35b?fm=jpg&fit=crop&w=1000)"
   }
 ]
 ```
 
----
-
-### 6.2 Scrittura dello Script Standalone per i Porti con Resilienza e Upsert
-
-Crea la cartella `scripts` nella root del progetto e al suo interno il file `importPorts.js`.
-
----
-
-#### Step 1: Gestione della Resilienza di Rete (Libreria `withRetry`)
-
-**1. Spiegazione Concettuale**  
-A causa di possibili micro-interruzioni di rete o latenze DNS (errori di tipo `ETIMEDOUT` generati dal client HTTP nativo di Node.js), è fondamentale avvolgere ogni chiamata API verso DatoCMS in una funzione di *Retry*. Se una chiamata fallisce, la funzione attende un intervallo prefissato e ritenta automaticamente l'operazione prima di sollevare un'eccezione.
-
-**2. Estratto di Codice**  
-```javascript
-async function withRetry(fn, retries = 3, delay = 1000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      console.warn(`Timeout di rete. Ritento la connessione (${i + 1}/${retries})...`);
-      await new Promise((res) => setTimeout(res, delay));
-    }
-  }
-}
-```
-
-**3. Spiegazione delle variabili e dei valori**  
-* **`fn`**: La funzione asincrona contenente la chiamata API da eseguire (es. `client.items.list()`).
-* **`retries`**: Il numero massimo di tentativi consentiti prima di dichiarare il fallimento (default: `3`).
-* **`delay`**: Il tempo di attesa in millisecondi tra un tentativo e il successivo (default: `1000ms`).
-
----
-
-#### Step 2: Ricerca del Record ed Upload dei Media
-
-**1. Spiegazione Concettuale**  
-Prima di creare un nuovo record, interroghiamo DatoCMS per verificare se il porto esiste già basandoci sul campo univoco `nome`. Se nel JSON è presente `foto_src`, carichiamo l'immagine tramite l'helper di SDK appropriato (`createFromUrl` o `createFromLocalFile`), garantendo l'idempotenza dell'upload tramite la flag `skipCreationIfAlreadyExists`.
-
-**2. Estratto di Codice**  
-```javascript
-      const existingPorts = await withRetry(() =>
-        client.items.list({
-          filter: {
-            type: portModel.id,
-            fields: { nome: { eq: portoData.nome } },
-          },
-        })
-      );
-      const existingPort = existingPorts[0];
-
-      let fotoCopertinaPayload = null;
-      if (portoData.foto_src) {
-        console.log(`Caricamento media per ${portoData.nome}...`);
-        const isRemoteUrl = portoData.foto_src.startsWith('http://') || portoData.foto_src.startsWith('https://');
-
-        let upload;
-        if (isRemoteUrl) {
-          upload = await withRetry(() =>
-            client.uploads.createFromUrl({
-              url: portoData.foto_src,
-              skipCreationIfAlreadyExists: true,
-            })
-          );
-        } else {
-          const localFilePath = path.resolve(__dirname, '..', portoData.foto_src);
-          upload = await withRetry(() =>
-            client.uploads.createFromLocalFile({
-              localPath: localFilePath,
-              skipCreationIfAlreadyExists: true,
-            })
-          );
-        }
-        fotoCopertinaPayload = { upload_id: upload.id };
-      }
-```
-
-**3. Spiegazione delle variabili e dei valori**  
-* **`existingPorts[0]`**: Estrae il record esistente; se `undefined`, il record non esiste ancora a sistema.
-* **`skipCreationIfAlreadyExists: true`**: Evita la duplicazione degli asset nella Media Library se l'immagine è già stata caricata in un'esecuzione precedente.
-* **`fotoCopertinaPayload`**: Oggetto `{ upload_id: upload.id }` per associare la risorsa al campo file del modello.
-
----
-
-#### Step 3: Confronto Dati, Upsert e Controllo degli Exit Code
-
-**1. Spiegazione Concettuale**  
-Se il record esiste, confrontiamo i campi sorgente con quelli salvati. Se rileviamo differenze eseguiamo l'aggiornamento; se i dati sono identici incrementiamo il contatore `countUnchanged`. Al termine del ciclo, controlliamo l'esito globale ed usciamo esplicitamente dal processo con `process.exit(0)` per rilasciare i socket HTTP *keep-alive* ed evitare che la shell Bash rimanga bloccata.
-
-**2. Estratto di Codice**  
-```javascript
-      if (existingPort) {
-        const hasChanges = existingPort.citta !== portoData.citta;
-
-        if (hasChanges) {
-          console.log(`Trovate modifiche per: ${portoData.nome}. Aggiornamento in corso...`);
-          await withRetry(() =>
-            client.items.update(existingPort.id, {
-              citta: portoData.citta,
-              ...(fotoCopertinaPayload && { foto_copertina: fotoCopertinaPayload }),
-            })
-          );
-          await withRetry(() => client.items.publish(existingPort.id));
-          console.log(`Aggiornato con successo: ${portoData.nome}`);
-          countUpdated++;
-        } else {
-          console.log(`Dati identici per: ${portoData.nome}. Nessuna operazione eseguita.`);
-          countUnchanged++;
-        }
-      } else {
-        const porto = await withRetry(() =>
-          client.items.create({
-            item_type: { type: 'item_type', id: portModel.id },
-            nome: portoData.nome, 
-            citta: portoData.citta,
-            foto_copertina: fotoCopertinaPayload,
-          })
-        );
-        await withRetry(() => client.items.publish(porto.id));
-        console.log(`Importato e pubblicato ex-novo: ${portoData.nome}`);
-        countCreated++;
-      }
-```
-
-**3. Spiegazione delle variabili e dei valori**  
-* **`hasChanges`**: Booleano che determina se occorre effettuare una chiamata API di modifica o saltare l'operazione.
-* **`countCreated` / `countUpdated` / `countUnchanged`**: Contatori usati per la reportistica finale del processo.
-
----
-
-### 6.3 Codice Completo ed Esecuzione (`scripts/importPorts.js`)
-
-**1. Codice Completo**
-```javascript
-'use strict';
-require('dotenv').config({ path: '.env.local' });
-const path = require('path');
-const { buildClient } = require('@datocms/cma-client-node');
-const portiSource = require('../data/porti_source.json');
-
-const client = buildClient({
-  apiToken: process.env.DATOCMS_FULL_ACCESS_API_TOKEN,
-  environment: 'task-modulo-10',
-});
-
-// Helper per tollerare ed evitare errori di timeout di rete (ETIMEDOUT)
-async function withRetry(fn, retries = 3, delay = 1000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (i === retries - 1) throw err;
-      console.warn(`Timeout di rete. Ritento la connessione (${i + 1}/${retries})...`);
-      await new Promise((res) => setTimeout(res, delay));
-    }
-  }
-}
-
-async function runImportPorts() {
-  console.log(`Inizio sincronizzazione di ${portiSource.length} porti...`);
-
-  const portModel = await withRetry(() => client.itemTypes.find('port'));
-
-  let countCreated = 0;
-  let countUpdated = 0;
-  let countUnchanged = 0;
-  let countInactive = 0;
-  const errors = [];
-
-  for (const portoData of portiSource) {
-    if (!portoData.attivo) {
-      console.log(`Skipping: ${portoData.nome} (Inattivo)`);
-      countInactive++;
-      continue; 
-    }
-
-    try {
-      const existingPorts = await withRetry(() =>
-        client.items.list({
-          filter: {
-            type: portModel.id,
-            fields: { nome: { eq: portoData.nome } },
-          },
-        })
-      );
-      const existingPort = existingPorts[0];
-
-      let fotoCopertinaPayload = null;
-      if (portoData.foto_src) {
-        console.log(`Caricamento media per ${portoData.nome}...`);
-        const isRemoteUrl = portoData.foto_src.startsWith('http://') || portoData.foto_src.startsWith('https://');
-
-        let upload;
-        if (isRemoteUrl) {
-          upload = await withRetry(() =>
-            client.uploads.createFromUrl({
-              url: portoData.foto_src,
-              skipCreationIfAlreadyExists: true,
-            })
-          );
-        } else {
-          const localFilePath = path.resolve(__dirname, '..', portoData.foto_src);
-          upload = await withRetry(() =>
-            client.uploads.createFromLocalFile({
-              localPath: localFilePath,
-              skipCreationIfAlreadyExists: true,
-            })
-          );
-        }
-        fotoCopertinaPayload = { upload_id: upload.id };
-      }
-
-      if (existingPort) {
-        const hasChanges = existingPort.citta !== portoData.citta;
-
-        if (hasChanges) {
-          console.log(`Trovate modifiche per: ${portoData.nome}. Aggiornamento in corso...`);
-          await withRetry(() =>
-            client.items.update(existingPort.id, {
-              citta: portoData.citta,
-              ...(fotoCopertinaPayload && { foto_copertina: fotoCopertinaPayload }),
-            })
-          );
-          await withRetry(() => client.items.publish(existingPort.id));
-          console.log(`Aggiornato con successo: ${portoData.nome}`);
-          countUpdated++;
-        } else {
-          console.log(`Dati identici per: ${portoData.nome}. Nessuna operazione eseguita.`);
-          countUnchanged++;
-        }
-      } else {
-        const porto = await withRetry(() =>
-          client.items.create({
-            item_type: { type: 'item_type', id: portModel.id },
-            nome: portoData.nome, 
-            citta: portoData.citta,
-            foto_copertina: fotoCopertinaPayload,
-          })
-        );
-        await withRetry(() => client.items.publish(porto.id));
-        console.log(`Importato e pubblicato ex-novo: ${portoData.nome}`);
-        countCreated++;
-      }
-
-    } catch (error) {
-      console.error(`Errore durante l'elaborazione di ${portoData.nome}:`, error.message);
-      errors.push({ record: portoData.nome, message: error.message });
-    }
-  }
-
-  console.log('\nRiepilogo importazione porti:');
-  console.log(`- Creati ex-novo: ${countCreated}`);
-  console.log(`- Aggiornati: ${countUpdated}`);
-  console.log(`- Identici (Inalterati): ${countUnchanged}`);
-  console.log(`- Ignorati (Inattivi): ${countInactive}`);
-  console.log(`- Falliti: ${errors.length}`);
-
-  if (errors.length > 0) {
-    console.error('\nSincronizzazione completata con errori.');
-    process.exit(1);
-  } else if (countUnchanged === portiSource.length - countInactive) {
-    console.log('\nTutti i record erano già perfettamente sincronizzati. Nessuna modifica apportata a DatoCMS.');
-    process.exit(0);
-  } else {
-    console.log('\nSincronizzazione porti completata con successo.');
-    process.exit(0);
-  }
-}
-
-runImportPorts().catch(console.error);
-```
-
-**2. Esecuzione da Terminale**
-Esegui lo script avviando Node.js dalla root del tuo progetto:
-```bash
-node scripts/importPorts.js
-```
-
----
-
-### 6.4 Importazione Avanzata con Relazioni e Risoluzione Deep dei Blocchi Modulari (Importazione Navi)
-
-Per la collezione **Nave**, colleghiamo ciascun record al suo **Porto** di appartenenza (Single Link) e popoliamo il campo **Registro Manutenzioni** (Modular Content).
-
----
-
-#### Step 1: Preparazione sorgente (`./data/navi_source.json`)
-
-**1. Spiegazione Concettuale**  
-Crea il file `navi_source.json` nella cartella `data`. Ciascun oggetto rispetta la mappa dei campi definiti nello Schema del modello Nave (`nome`, `codice_imo`, `capienza_passeggeri`, `in_servizio`), include il riferimento esterno `porto_nome` e l'array di blocchi `manutenzioni`.
-
+**Sorgente Navi con Blocchi Modulari (`data/navi_source.json`):**
 ```json
 [
   {
@@ -1335,10 +1069,6 @@ Crea il file `navi_source.json` nella cartella `data`. Ciascun oggetto rispetta 
       {
         "data_intervento": "2026-01-20",
         "descrizione": "Verniciatura antivegetativa dello scafo."
-      },
-      {
-        "data_intervento": "2026-03-01",
-        "descrizione": "Controllo sistemi radar e navigazione."
       }
     ]
   }
@@ -1347,101 +1077,208 @@ Crea il file `navi_source.json` nella cartella `data`. Ciascun oggetto rispetta 
 
 ---
 
-#### Step 2: Risoluzione della Relazione (Single Link) e Formattazione dei Blocchi Modulari
+### 6.2 Architettura Avanzata: Unico Modulo di Utilità (`datoClient.js`)
+
+Crea la cartella `scripts` nella root del progetto. 
+
+Struttura aggiornata del progetto:
+```text
+> .next
+> data                    
+> migrations
+> node_modules
+> public
+> scripts                 <-- NUOVA: Conterrà datoClient.js e gli script d'importazione
+> src
+  .env.local
+```
+
+Per rispettare il principio **DRY (Don't Repeat Yourself)** ed evitare di duplicare il codice negli script di importazione, raggruppiamo l'inizializzazione del client e tutte le complesse logiche di interazione con DatoCMS (Ricerca, Upload, Upsert) in un **unico file condiviso**.
+
+Analizziamo i blocchi logici che comporranno il file `scripts/datoClient.js` prima di vederne il codice completo:
+
+#### A. Connessione e Resilienza di Rete
 
 **1. Spiegazione Concettuale**  
-Risolviamo la relazione cercando il record Porto tramite `porto_nome`. Per le manutenzioni, mappiamo gli elementi sorgente nella struttura ad oggetti richiesta dalle API di DatoCMS per i contenuti modulari inline (`type`, `attributes`, `relationships.item_type`).
+Carichiamo le variabili d'ambiente dal file `.env.local` e istanziamo il client Node.js per la CMA, configurandolo dinamicamente con l'ambiente specificato nella variabile `NEXT_DATOCMS_ENVIRONMENT`. Definiamo inoltre `withRetry`, una funzione che ripete automaticamente le chiamate API in caso di micro-cadute di rete (errori `ETIMEDOUT`).
 
 **2. Estratto di Codice**  
 ```javascript
-      const targetPorts = await withRetry(() =>
-        client.items.list({
-          filter: {
-            type: portModel.id,
-            fields: { nome: { eq: naveData.porto_nome } },
-          },
-        })
-      );
-      const targetPort = targetPorts[0];
-
-      if (!targetPort) {
-        throw new Error(`Porto associato '${naveData.porto_nome}' non trovato.`);
-      }
-
-      let registroManutenzioniPayload = [];
-      if (Array.isArray(naveData.manutenzioni) && naveData.manutenzioni.length > 0) {
-        registroManutenzioniPayload = naveData.manutenzioni.map((m) => ({
-          type: 'item',
-          attributes: {
-            data_intervento: m.data_intervento,
-            descrizione: m.descrizione,
-          },
-          relationships: {
-            item_type: {
-              data: { type: 'item_type', id: maintenanceBlock.id },
-            },
-          },
-        }));
-      }
-```
-
-**3. Spiegazione delle variabili e dei valori**  
-* **`targetPort.id`**: L'ID univoco interno del porto da associare al campo `porto`.
-* **`maintenanceBlock.id`**: L'ID dello schema del blocco `maintenance_entry`.
-* **`registroManutenzioniPayload`**: L'array di blocchi modulari formattato per l'inserimento.
-
----
-
-#### Step 3: Risoluzione Deep dei Blocchi Modulari per il Confronto Idempotente
-
-**1. Spiegazione Concettuale**  
-Quando interroghiamo un record con `items.list()`, DatoCMS restituisce per il campo Modular Content solo un array di ID di blocco (es. `["10293847"]`). Per effettuare un confronto dati reale ed evitare falsi aggiornamenti, lo script scarica i singoli blocchi tramite `client.items.find(blockId)` e ne estrae i valori prima del confronto.
-
-**2. Estratto di Codice**  
-```javascript
-        let existingManutenzioni = [];
-        const existingBlockIds = existingShip.registro_manutenzioni || [];
-
-        if (existingBlockIds.length > 0) {
-          const fetchedBlocks = await Promise.all(
-            existingBlockIds.map((blockId) => withRetry(() => client.items.find(blockId)))
-          );
-          existingManutenzioni = fetchedBlocks.map((b) => ({
-            data_intervento: b.data_intervento,
-            descrizione: b.descrizione,
-          }));
-        }
-
-        const hasChanges =
-          existingShip.codice_imo !== naveData.codice_imo ||
-          existingShip.capienza_passeggeri !== naveData.capienza_passeggeri ||
-          existingShip.in_servizio !== naveData.in_servizio ||
-          existingShip.porto !== targetPort.id ||
-          JSON.stringify(existingManutenzioni) !== JSON.stringify(naveData.manutenzioni || []);
-```
-
-**3. Spiegazione delle variabili e dei valori**  
-* **`existingBlockIds`**: Array di ID di blocco salvati nel record su DatoCMS.
-* **`fetchedBlocks`**: Array dei blocchi recuperati dal CMS completi delle proprie proprietà originarie.
-* **`hasChanges`**: Rileva variazioni sui campi tradizionali o sui valori interni dei blocchi modulari.
-
----
-
-### 6.5 Codice Completo Standalone (`scripts/importShips.js`)
-
-**1. Codice Completo**
-```javascript
-'use strict';
 require('dotenv').config({ path: '.env.local' });
 const { buildClient } = require('@datocms/cma-client-node');
-const naviSource = require('../data/navi_source.json');
 
 const client = buildClient({
   apiToken: process.env.DATOCMS_FULL_ACCESS_API_TOKEN,
-  environment: 'task-modulo-10',
+  environment: process.env.NEXT_DATOCMS_ENVIRONMENT,
 });
 
-// Helper per tollerare ed evitare errori di timeout di rete (ETIMEDOUT)
+async function withRetry(fn, retries = 3, delay = 1000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      console.warn(`Timeout di rete. Ritento la connessione (${i + 1}/${retries})...`);
+      await new Promise((res) => setTimeout(res, delay));
+    }
+  }
+}
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`buildClient`**: Crea l'istanza per comunicare con il CMS.
+* **`process.env.NEXT_DATOCMS_ENVIRONMENT`**: Inietta dinamicamente l'ambiente target (es. `task-modulo-10` o `develop`) letto direttamente dal file `.env.local`.
+* **`fn`**: La chiamata API che passiamo a `withRetry` affinché venga protetta e, se necessario, ripetuta fino a 3 volte (`retries`).
+
+#### B. Ricerca Dinamica dei Record (`findRecordByField`)
+
+**1. Spiegazione Concettuale**  
+Crea un'astrazione per cercare un record in base a un parametro dinamico (es. cerca il "Porto di Genova" nel campo "nome") senza dover riscrivere ogni volta la query di filtraggio della CMA.
+
+**2. Estratto di Codice**  
+```javascript
+async function findRecordByField(modelId, fieldName, fieldValue) {
+  const records = await withRetry(() =>
+    client.items.list({
+      filter: {
+        type: modelId,
+        fields: { [fieldName]: { eq: fieldValue } },
+      },
+    })
+  );
+  return records[0] || null;
+}
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`[fieldName]`**: Le parentesi quadre permettono di usare il valore della variabile come chiave dell'oggetto (es. il campo diventa dinamicamente `nome` o `codice_imo`).
+* **`records[0] || null`**: DatoCMS restituisce una lista; estraiamo il primo risultato o un valore nullo sicuro in caso di elenco vuoto.
+
+#### C. Caricamento Intelligente dei Media (`uploadMedia`)
+
+**1. Spiegazione Concettuale**  
+Valuta la stringa in ingresso: se inizia con `http`, ordina al CMS di scaricarla dal web tramite `createFromUrl`. Altrimenti, la converte in un percorso assoluto locale e la carica dal disco fisso tramite `createFromLocalFile`.
+
+**2. Estratto di Codice**  
+```javascript
+async function uploadMedia(fotoSource) {
+  if (!fotoSource) return null;
+  const isRemoteUrl = fotoSource.startsWith('http://') || fotoSource.startsWith('https://');
+
+  let upload = isRemoteUrl
+    ? await withRetry(() => client.uploads.createFromUrl({ url: fotoSource, skipCreationIfAlreadyExists: true }))
+    : await withRetry(() => client.uploads.createFromLocalFile({ localPath: path.resolve(__dirname, '..', fotoSource), skipCreationIfAlreadyExists: true }));
+
+  return { upload_id: upload.id };
+}
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`startsWith('http')`**: Riconosce automaticamente un URL web.
+* **`{ upload_id: upload.id }`**: Struttura a oggetto richiesta da DatoCMS per popolare un campo file/immagine.
+
+#### D. Estrazione dei Blocchi Modulari (`fetchModularBlocks`)
+
+**1. Spiegazione Concettuale**  
+Poiché i contenuti modulari sono restituiti dal CMS solo come una lista di ID, questa funzione scarica in blocco il contenuto reale associato ed estrae solo le chiavi utili (es. "data" e "descrizione"), eliminando i metadati di sistema.
+
+**2. Estratto di Codice**  
+```javascript
+async function fetchModularBlocks(blockIds, keys = []) {
+  if (!Array.isArray(blockIds) || blockIds.length === 0) return [];
+  const fetched = await Promise.all(
+    blockIds.map((id) => withRetry(() => client.items.find(id)))
+  );
+  return fetched.map((block) =>
+    keys.reduce((obj, key) => ({ ...obj, [key]: block[key] }), {})
+  );
+}
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`Promise.all(...)`**: Lancia tutte le chiamate di scaricamento dei blocchi in parallelo.
+* **`keys.reduce(...)`**: Filtra ogni blocco estratto creando un nuovo oggetto contenente esclusivamente i campi richiesti.
+
+#### E. Motore Decisionale di Sincronizzazione (`upsertEntity`)
+
+**1. Spiegazione Concettuale**  
+Converte i dati attuali e quelli futuri in puro testo (`JSON.stringify`) per capire se c'è stata una variazione. Se non c'è, salta. Se c'è, aggiorna. Se il record non esiste, lo crea ex-novo.
+
+**2. Estratto di Codice**  
+```javascript
+function hasRecordChanged(existingData, newData) {
+  return JSON.stringify(existingData) !== JSON.stringify(newData);
+}
+
+async function upsertEntity({ recordName, modelId, existingRecord, payload, currentNormalizedData, newNormalizedData, stats }) {
+  if (existingRecord) {
+    if (hasRecordChanged(currentNormalizedData, newNormalizedData)) {
+      console.log(`Trovate modifiche per: ${recordName}. Aggiornamento in corso...`);
+      await withRetry(() => client.items.update(existingRecord.id, payload));
+      await withRetry(() => client.items.publish(existingRecord.id));
+      stats.updated++;
+    } else {
+      console.log(`Dati identici per: ${recordName}. Nessuna operazione eseguita.`);
+      stats.unchanged++;
+    }
+  } else {
+    const newRecord = await withRetry(() => client.items.create({ item_type: { type: 'item_type', id: modelId }, ...payload }));
+    await withRetry(() => client.items.publish(newRecord.id));
+    stats.created++;
+  }
+}
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`JSON.stringify`**: Se l'oggetto converte in una stringa differente anche per un singolo carattere, la funzione innesca l'aggiornamento (`update`).
+* **`payload`**: L'oggetto dati pronto per l'invio a DatoCMS.
+* **`stats`**: Il contatore esterno incrementato dinamicamente a seconda dell'azione eseguita.
+
+#### F. Stampa del Report ed Exit Code (`printSummaryAndExit`)
+
+**1. Spiegazione Concettuale**  
+Stampa il riepilogo a terminale e gestisce l'Exit Code per istruire il sistema operativo o le pipeline aziendali sull'esito reale dell'operazione (0 per Successo, 1 per Errore).
+
+**2. Estratto di Codice**  
+```javascript
+function printSummaryAndExit(entityName, totalSourceCount, stats, errors) {
+  console.log(`\nRiepilogo importazione ${entityName}:`);
+  console.log(`- Creati: ${stats.created} | Aggiornati: ${stats.updated} \vert{} Inalterati:${stats.unchanged} | Inattivi: ${stats.inactive} \vert{} Falliti:${errors.length}`);
+
+  if (errors.length > 0) {
+    console.error(`\nSincronizzazione ${entityName} completata con errori.`);
+    process.exit(1);
+  } else if (stats.unchanged === totalSourceCount - stats.inactive) {
+    console.log(`\nTutti i record erano già perfettamente sincronizzati.`);
+    process.exit(0);
+  } else {
+    console.log(`\nSincronizzazione ${entityName} completata con successo.`);
+    process.exit(0);
+  }
+}
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`process.exit(1)`**: Arresta Node.js segnalando uno stato di errore.
+* **`process.exit(0)`**: Chiude il processo comunicando uno stato di esecuzione terminata con successo.
+
+---
+
+#### Codice Completo dell'Unico Modulo (`scripts/datoClient.js`)
+
+Crea il file e copia integralmente questo codice:
+
+```javascript
+'use strict';
+require('dotenv').config({ path: '.env.local' });
+const path = require('path');
+const { buildClient } = require('@datocms/cma-client-node');
+
+const client = buildClient({
+  apiToken: process.env.DATOCMS_FULL_ACCESS_API_TOKEN,
+  environment: process.env.NEXT_DATOCMS_ENVIRONMENT,
+});
+
 async function withRetry(fn, retries = 3, delay = 1000) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -1454,6 +1291,249 @@ async function withRetry(fn, retries = 3, delay = 1000) {
   }
 }
 
+async function findRecordByField(modelId, fieldName, fieldValue) {
+  const records = await withRetry(() =>
+    client.items.list({ filter: { type: modelId, fields: { [fieldName]: { eq: fieldValue } } } })
+  );
+  return records[0] || null;
+}
+
+async function uploadMedia(fotoSource) {
+  if (!fotoSource) return null;
+  const isRemoteUrl = fotoSource.startsWith('http://') || fotoSource.startsWith('https://');
+  let upload = isRemoteUrl
+    ? await withRetry(() => client.uploads.createFromUrl({ url: fotoSource, skipCreationIfAlreadyExists: true }))
+    : await withRetry(() => client.uploads.createFromLocalFile({ localPath: path.resolve(__dirname, '..', fotoSource), skipCreationIfAlreadyExists: true }));
+  return { upload_id: upload.id };
+}
+
+async function fetchModularBlocks(blockIds, keys = []) {
+  if (!Array.isArray(blockIds) || blockIds.length === 0) return [];
+  const fetched = await Promise.all(blockIds.map((id) => withRetry(() => client.items.find(id))));
+  return fetched.map((block) => keys.reduce((obj, key) => ({ ...obj, [key]: block[key] }), {}));
+}
+
+function hasRecordChanged(existingData, newData) {
+  return JSON.stringify(existingData) !== JSON.stringify(newData);
+}
+
+async function upsertEntity({ recordName, modelId, existingRecord, payload, currentNormalizedData, newNormalizedData, stats }) {
+  if (existingRecord) {
+    if (hasRecordChanged(currentNormalizedData, newNormalizedData)) {
+      console.log(`Trovate modifiche per: ${recordName}. Aggiornamento in corso...`);
+      await withRetry(() => client.items.update(existingRecord.id, payload));
+      await withRetry(() => client.items.publish(existingRecord.id));
+      console.log(`Aggiornato con successo: ${recordName}`);
+      stats.updated++;
+    } else {
+      console.log(`Dati identici per: ${recordName}. Nessuna operazione eseguita.`);
+      stats.unchanged++;
+    }
+  } else {
+    const newRecord = await withRetry(() => client.items.create({ item_type: { type: 'item_type', id: modelId }, ...payload }));
+    await withRetry(() => client.items.publish(newRecord.id));
+    console.log(`Importato e pubblicato ex-novo: ${recordName}`);
+    stats.created++;
+  }
+}
+
+function printSummaryAndExit(entityName, totalSourceCount, stats, errors) {
+  console.log(`\nRiepilogo importazione ${entityName}:`);
+  console.log(`- Creati: ${stats.created} | Aggiornati: ${stats.updated} \vert{} Inalterati:${stats.unchanged} | Inattivi: ${stats.inactive} \vert{} Falliti:${errors.length}`);
+
+  if (errors.length > 0) {
+    console.error(`\nSincronizzazione ${entityName} completata con errori.`);
+    process.exit(1);
+  } else if (stats.unchanged === totalSourceCount - stats.inactive) {
+    console.log(`\nTutti i record erano già perfettamente sincronizzati.`);
+    process.exit(0);
+  } else {
+    console.log(`\nSincronizzazione ${entityName} completata con successo.`);
+    process.exit(0);
+  }
+}
+
+// Esportiamo tutte le utility in un colpo solo
+module.exports = { 
+  client, 
+  withRetry, 
+  findRecordByField, 
+  uploadMedia, 
+  fetchModularBlocks, 
+  upsertEntity, 
+  printSummaryAndExit 
+};
+```
+
+---
+
+### 6.3 Scrittura dello Script Standalone per i Porti (Refattorizzato)
+
+Grazie al file unico `datoClient.js`, lo script dei porti si concentra esclusivamente sull'estrazione e sulla trasformazione dei dati (ETL).
+
+#### Step 1: Mapping, Upload e Upsert
+
+**1. Spiegazione Concettuale**  
+Importiamo le utility da `datoClient.js`. Per ogni porto nel JSON, verifichiamo la presenza del record, carichiamo la foto tramite `uploadMedia` e inviamo i dati a `upsertEntity` fornendo sia il payload da caricare sia la struttura normalizzata per il confronto.
+
+**2. Estratto di Codice**  
+```javascript
+      const existingPort = await findRecordByField(portModel.id, 'nome', portoData.nome);
+      const fotoSource = portoData.foto_src || portoData.foto_url;
+      
+      if (fotoSource) console.log(`Caricamento media per ${recordName}...`);
+      const fotoCopertinaPayload = await uploadMedia(fotoSource);
+
+      await upsertEntity({
+        recordName,
+        modelId: portModel.id,
+        existingRecord: existingPort,
+        payload: { nome: portoData.nome, citta: portoData.citta, ...(fotoCopertinaPayload && { foto_copertina: fotoCopertinaPayload }) },
+        currentNormalizedData: existingPort ? { citta: existingPort.citta } : null,
+        newNormalizedData: { citta: portoData.citta },
+        stats,
+      });
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`fotoSource`**: Recupera in modo flessibile `foto_src` o `foto_url`.
+* **`...(fotoCopertinaPayload && ...)`**: Aggiunge la chiave dell'immagine al payload solo se l'immagine è stata elaborata.
+
+#### Step 2: Codice Completo ed Esecuzione (`scripts/importPorts.js`)
+
+**1. Codice Completo**
+```javascript
+'use strict';
+const portiSource = require('../data/porti_source.json');
+const { client, withRetry, findRecordByField, uploadMedia, upsertEntity, printSummaryAndExit } = require('./datoClient');
+
+async function runImportPorts() {
+  console.log(`Inizio sincronizzazione di ${portiSource.length} porti...`);
+  const portModel = await withRetry(() => client.itemTypes.find('port'));
+
+  const stats = { created: 0, updated: 0, unchanged: 0, inactive: 0 };
+  const errors = [];
+
+  for (const portoData of portiSource) {
+    const recordName = portoData.nome || 'Record senza nome';
+
+    if (!portoData.attivo) {
+      console.log(`Skipping: ${recordName} (Inattivo)`);
+      stats.inactive++;
+      continue;
+    }
+
+    try {
+      const existingPort = await findRecordByField(portModel.id, 'nome', portoData.nome);
+      const fotoSource = portoData.foto_src || portoData.foto_url;
+      
+      if (fotoSource) console.log(`Caricamento media per ${recordName}...`);
+      const fotoCopertinaPayload = await uploadMedia(fotoSource);
+
+      await upsertEntity({
+        recordName,
+        modelId: portModel.id,
+        existingRecord: existingPort,
+        payload: { nome: portoData.nome, citta: portoData.citta, ...(fotoCopertinaPayload && { foto_copertina: fotoCopertinaPayload }) },
+        currentNormalizedData: existingPort ? { citta: existingPort.citta } : null,
+        newNormalizedData: { citta: portoData.citta },
+        stats,
+      });
+    } catch (error) {
+      console.error(`Errore su ${recordName}:`, error.message);
+      errors.push({ record: recordName, message: error.message });
+    }
+  }
+
+  printSummaryAndExit('porti', portiSource.length, stats, errors);
+}
+
+runImportPorts().catch(console.error);
+```
+
+**2. Esecuzione da Terminale**
+Esegui lo script avviando Node.js dalla root:
+```bash
+node scripts/importPorts.js
+```
+
+---
+
+### 6.4 Importazione Navi (Refactoring con Risoluzione Deep e Relazioni)
+
+Gestiamo le relazioni e i blocchi modulari delle navi delegando le chiamate ripetitive a `datoClient.js`.
+
+#### Step 1: Risoluzione Relazioni e Mappatura Blocchi
+
+**1. Spiegazione Concettuale**  
+Risolviamo la relazione cercando l'ID univoco reale del porto associato tramite `findRecordByField`. Convertiamo poi l'array di manutenzioni nella struttura nidificata richiesta per i blocchi modulari.
+
+**2. Estratto di Codice**  
+```javascript
+      const existingShip = await findRecordByField(shipModel.id, 'nome', naveData.nome);
+      const targetPort = await findRecordByField(portModel.id, 'nome', naveData.porto_nome);
+
+      if (!targetPort) throw new Error(`Porto '${naveData.porto_nome}' non trovato.`);
+
+      let registroManutenzioniPayload = [];
+      if (Array.isArray(naveData.manutenzioni) && naveData.manutenzioni.length > 0) {
+        registroManutenzioniPayload = naveData.manutenzioni.map((m) => ({
+          type: 'item',
+          attributes: { data_intervento: m.data_intervento, descrizione: m.descrizione },
+          relationships: { item_type: { data: { type: 'item_type', id: maintenanceBlock.id } } },
+        }));
+      }
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`targetPort.id`**: L'ID necessario per collegare la Nave al Porto.
+* **`registroManutenzioniPayload`**: L'array di blocchi formattato secondo lo standard JSON:API (`type`, `attributes`, `relationships`).
+
+#### Step 2: Estrazione Blocchi Esistenti e Upsert
+
+**1. Spiegazione Concettuale**  
+In caso di record esistente, scarichiamo i dati reali dei blocchi tramite `fetchModularBlocks`. Invochiamo poi `upsertEntity` inviando l'intera struttura di dati per permettere la verifica di modifiche nidificate.
+
+**2. Estratto di Codice**  
+```javascript
+      let existingManutenzioni = [];
+      if (existingShip) {
+        existingManutenzioni = await fetchModularBlocks(existingShip.registro_manutenzioni, ['data_intervento', 'descrizione']);
+      }
+
+      await upsertEntity({
+        recordName: naveData.nome,
+        modelId: shipModel.id,
+        existingRecord: existingShip,
+        payload: {
+          nome: naveData.nome, codice_imo: naveData.codice_imo, capienza_passeggeri: naveData.capienza_passeggeri,
+          in_servizio: naveData.in_servizio, porto: targetPort.id,
+          ...(registroManutenzioniPayload.length > 0 && { registro_manutenzioni: registroManutenzioniPayload }),
+        },
+        currentNormalizedData: existingShip ? {
+          codice_imo: existingShip.codice_imo, capienza_passeggeri: existingShip.capienza_passeggeri,
+          in_servizio: existingShip.in_servizio, porto: existingShip.porto, manutenzioni: existingManutenzioni,
+        } : null,
+        newNormalizedData: {
+          codice_imo: naveData.codice_imo, capienza_passeggeri: naveData.capienza_passeggeri,
+          in_servizio: naveData.in_servizio, porto: targetPort.id, manutenzioni: naveData.manutenzioni || [],
+        },
+        stats,
+      });
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`existingManutenzioni`**: L'array decodificato dal CMS passato a `currentNormalizedData`.
+* **`naveData.manutenzioni`**: L'array testuale dal JSON sorgente passato a `newNormalizedData`.
+
+#### Step 3: Codice Completo ed Esecuzione (`scripts/importShips.js`)
+
+**1. Codice Completo**
+```javascript
+'use strict';
+const naviSource = require('../data/navi_source.json');
+const { client, withRetry, findRecordByField, fetchModularBlocks, upsertEntity, printSummaryAndExit } = require('./datoClient');
+
 async function runImportShips() {
   console.log(`Inizio sincronizzazione di ${naviSource.length} navi...`);
 
@@ -1464,136 +1544,62 @@ async function runImportShips() {
     return { shipModel: ship, portModel: port, maintenanceBlock: block };
   });
 
-  let countCreated = 0;
-  let countUpdated = 0;
-  let countUnchanged = 0;
-  let countInactive = 0;
+  const stats = { created: 0, updated: 0, unchanged: 0, inactive: 0 };
   const errors = [];
 
   for (const naveData of naviSource) {
     if (!naveData.attivo) {
       console.log(`Skipping: ${naveData.nome} (Inattiva)`);
-      countInactive++;
+      stats.inactive++;
       continue;
     }
 
     try {
-      const existingShips = await withRetry(() =>
-        client.items.list({
-          filter: {
-            type: shipModel.id,
-            fields: { nome: { eq: naveData.nome } },
-          },
-        })
-      );
-      const existingShip = existingShips[0];
+      const existingShip = await findRecordByField(shipModel.id, 'nome', naveData.nome);
+      const targetPort = await findRecordByField(portModel.id, 'nome', naveData.porto_nome);
 
-      const targetPorts = await withRetry(() =>
-        client.items.list({
-          filter: {
-            type: portModel.id,
-            fields: { nome: { eq: naveData.porto_nome } },
-          },
-        })
-      );
-      const targetPort = targetPorts[0];
-
-      if (!targetPort) {
-        throw new Error(`Porto associato '${naveData.porto_nome}' non trovato.`);
-      }
+      if (!targetPort) throw new Error(`Porto '${naveData.porto_nome}' non trovato.`);
 
       let registroManutenzioniPayload = [];
       if (Array.isArray(naveData.manutenzioni) && naveData.manutenzioni.length > 0) {
         registroManutenzioniPayload = naveData.manutenzioni.map((m) => ({
           type: 'item',
-          attributes: {
-            data_intervento: m.data_intervento,
-            descrizione: m.descrizione,
-          },
-          relationships: {
-            item_type: {
-              data: { type: 'item_type', id: maintenanceBlock.id },
-            },
-          },
+          attributes: { data_intervento: m.data_intervento, descrizione: m.descrizione },
+          relationships: { item_type: { data: { type: 'item_type', id: maintenanceBlock.id } } },
         }));
       }
 
-      const shipPayload = {
-        nome: naveData.nome,
-        codice_imo: naveData.codice_imo,
-        capienza_passeggeri: naveData.capienza_passeggeri,
-        in_servizio: naveData.in_servizio,
-        porto: targetPort.id,
-        ...(registroManutenzioniPayload.length > 0 && {
-          registro_manutenzioni: registroManutenzioniPayload,
-        }),
-      };
-
+      let existingManutenzioni = [];
       if (existingShip) {
-        let existingManutenzioni = [];
-        const existingBlockIds = existingShip.registro_manutenzioni || [];
-
-        if (existingBlockIds.length > 0) {
-          const fetchedBlocks = await Promise.all(
-            existingBlockIds.map((blockId) => withRetry(() => client.items.find(blockId)))
-          );
-          existingManutenzioni = fetchedBlocks.map((b) => ({
-            data_intervento: b.data_intervento,
-            descrizione: b.descrizione,
-          }));
-        }
-
-        const hasChanges =
-          existingShip.codice_imo !== naveData.codice_imo ||
-          existingShip.capienza_passeggeri !== naveData.capienza_passeggeri ||
-          existingShip.in_servizio !== naveData.in_servizio ||
-          existingShip.porto !== targetPort.id ||
-          JSON.stringify(existingManutenzioni) !== JSON.stringify(naveData.manutenzioni || []);
-
-        if (hasChanges) {
-          console.log(`Trovate modifiche per: ${naveData.nome}. Aggiornamento in corso...`);
-          await withRetry(() => client.items.update(existingShip.id, shipPayload));
-          await withRetry(() => client.items.publish(existingShip.id));
-          console.log(`Aggiornato con successo: ${naveData.nome}`);
-          countUpdated++;
-        } else {
-          console.log(`Dati identici per: ${naveData.nome}. Nessuna operazione eseguita.`);
-          countUnchanged++;
-        }
-      } else {
-        const ship = await withRetry(() =>
-          client.items.create({
-            item_type: { type: 'item_type', id: shipModel.id },
-            ...shipPayload,
-          })
-        );
-        await withRetry(() => client.items.publish(ship.id));
-        console.log(`Importato e pubblicato ex-novo: ${naveData.nome}`);
-        countCreated++;
+        existingManutenzioni = await fetchModularBlocks(existingShip.registro_manutenzioni, ['data_intervento', 'descrizione']);
       }
+
+      await upsertEntity({
+        recordName: naveData.nome,
+        modelId: shipModel.id,
+        existingRecord: existingShip,
+        payload: {
+          nome: naveData.nome, codice_imo: naveData.codice_imo, capienza_passeggeri: naveData.capienza_passeggeri,
+          in_servizio: naveData.in_servizio, porto: targetPort.id,
+          ...(registroManutenzioniPayload.length > 0 && { registro_manutenzioni: registroManutenzioniPayload }),
+        },
+        currentNormalizedData: existingShip ? {
+          codice_imo: existingShip.codice_imo, capienza_passeggeri: existingShip.capienza_passeggeri,
+          in_servizio: existingShip.in_servizio, porto: existingShip.porto, manutenzioni: existingManutenzioni,
+        } : null,
+        newNormalizedData: {
+          codice_imo: naveData.codice_imo, capienza_passeggeri: naveData.capienza_passeggeri,
+          in_servizio: naveData.in_servizio, porto: targetPort.id, manutenzioni: naveData.manutenzioni || [],
+        },
+        stats,
+      });
     } catch (error) {
-      console.error(`Errore durante l'elaborazione di ${naveData.nome}:`, error.message);
+      console.error(`Errore su ${naveData.nome}:`, error.message);
       errors.push({ record: naveData.nome, message: error.message });
     }
   }
 
-  console.log('\nRiepilogo importazione navi:');
-  console.log(`- Create ex-novo: ${countCreated}`);
-  console.log(`- Aggiornate: ${countUpdated}`);
-  console.log(`- Identiche (Inalterate): ${countUnchanged}`);
-  console.log(`- Ignorate (Inattive): ${countInactive}`);
-  console.log(`- Fallite: ${errors.length}`);
-
-  if (errors.length > 0) {
-    console.error('\nSincronizzazione completata con errori.');
-    process.exit(1);
-  } else if (countUnchanged === naviSource.length - countInactive) {
-    console.log('\nTutti i record erano già perfettamente sincronizzati. Nessuna modifica apportata a DatoCMS.');
-    process.exit(0);
-  } else {
-    console.log('\nSincronizzazione navi completata con successo.');
-    process.exit(0);
-  }
+  printSummaryAndExit('navi', naviSource.length, stats, errors);
 }
 
 runImportShips().catch(console.error);
@@ -1606,24 +1612,24 @@ node scripts/importShips.js
 
 ---
 
-### 6.6 Vantaggi dello Script Standalone in Scenari Enterprise
+### 6.5 Vantaggi dello Script Standalone in Scenari Enterprise
 
-L'approccio programmatico con script separati offre vantaggi rispetto all'inserimento manuale o all'uso delle migrazioni:
+L'approccio programmatico con script separati offre vantaggi critici rispetto all'inserimento manuale o all'uso delle migrazioni:
 * **Esecuzione Ripetibile e Idempotente:** Può essere eseguito più volte senza duplicare i record né forzare chiamate API non necessarie se i dati non hanno subito variazioni.
-* **Resilienza di Rete:** L'uso di helper con *Retry* gestisce i micro-drop di connessione evitando blocchi imprevisti del processo.
+* **Incapsulamento Architetturale (DRY):** L'utilizzo del modulo unico `datoClient.js` astrae configurazione di rete e logiche di decisione Upsert. Gli script si concentrano solo sul mapping dei dati (ETL), azzerando la duplicazione del codice.
+* **Resilienza di Rete:** L'helper `withRetry` gestisce i micro-drop di connessione evitando blocchi imprevisti.
 * **Integrazione con Cron Jobs:** Automatizzabile tramite server o pipeline CI/CD per sincronizzare il CMS con database esterni.
-* **Sanitizzazione e Trasformazione (ETL):** Consente di validare e trasformare i dati (media, relazioni, blocchi modulari) prima di inviarli al CMS.
-* **Gestione degli Errori ed Exit Code:** L'uso dei blocchi `try...catch` unitamente al tracciamento e ai comandi `process.exit(0)` / `process.exit(1)` garantisce che i sistemi esterni riconoscano correttamente l'esito reale dell'importazione.
+* **Gestione degli Errori ed Exit Code:** L'uso dei blocchi `try...catch` unitamente ai comandi `process.exit(0)` / `process.exit(1)` del modulo `printSummaryAndExit` garantisce che pipeline aziendali o server Cron riconoscano correttamente l'esito reale dell'importazione.
 
 ---
 
-### 6.7 Verifica Complessiva dell'Importazione su DatoCMS
+### 6.6 Verifica Complessiva dell'Importazione su DatoCMS
 
 **1. Spiegazione Concettuale e Navigazione**  
-Dopo l'esecuzione degli script `importPorts.js` e `importShips.js`, verifichiamo la pubblicazione dei dati, la corretta associazione delle relazioni e la presenza dei blocchi modulari nell'ambiente `task-modulo-10`.
+Dopo l'esecuzione degli script `importPorts.js` e `importShips.js`, verifichiamo la pubblicazione dei dati, la corretta associazione delle relazioni e la presenza dei blocchi modulari nell'ambiente target specificato in `.env.local` (es. `task-modulo-10`).
 
 **2. Passaggi per la verifica**  
-* **Selezione Ambiente:** Controlla che l'ambiente selezionato nella barra superiore della dashboard sia `task-modulo-10`.
+* **Selezione Ambiente:** Controlla che l'ambiente selezionato nella barra superiore della dashboard sia quello corrispondente a `NEXT_DATOCMS_ENVIRONMENT` (es. `task-modulo-10`).
 * **Tab Content:** Apri la voce **"Content"** nel menu principale.
 * **Collezione Porto:** Seleziona **"Porto"** per visualizzare i record ("Porto di Genova", "Porto di Gioia Tauro") e le rispettive immagini di copertina.
 * **Collezione Nave:** Seleziona **"Nave"** per verificare la presenza dei record ("Vesuvio Express", "Napoli Express", "Tirreno Star").
@@ -1633,3 +1639,71 @@ Dopo l'esecuzione degli script `importPorts.js` e `importShips.js`, verifichiamo
 * **Filtraggio Dati:** I record segnati con `"attivo": false` nei file JSON non sono presenti a sistema.
 * **Verifica Relazione (Single Link):** Aprendo una scheda nave (es. "Vesuvio Express"), il campo *Porto di Appartenenza* mostra il badge del rispettivo porto ("Porto di Genova"), confermando che lo script ha collegato correttamente le entità tramite ID.
 * **Verifica Blocchi Modulari:** Nella scheda della nave (es. "Vesuvio Express" o "Tirreno Star"), la sezione *Registro Manutenzioni* contiene i blocchi con la data e la descrizione specificate nel file JSON.
+
+---
+
+## 7. Merge Incrementale e Rollback Sicuro su `develop`
+
+L'integrazione delle novità dall'ambiente sandbox all'ambiente condiviso `develop` si effettua in modo incrementale e controllato, consentendo di applicare schema e dati e di eseguire un eventuale rollback selettivo senza impattare il lavoro concorrente del team.
+
+---
+
+### 7.1 Applicazione dello Schema su `develop`
+
+**1. Spiegazione Concettuale**  
+Per trasferire le modifiche di struttura (modelli Porto e Nave) sull'ambiente `develop` già esistente, eseguiamo la CLI di DatoCMS indicando di applicare le migrazioni *in-place*. La CLI confronterà i file nella cartella `./migrations` con lo storico di `develop` ed eseguirà unicamente quelli non ancora applicati.
+
+**2. Estratto di Codice (Terminale)**  
+```bash
+npx datocms migrations:run --source=develop --in-place
+```
+
+**3. Spiegazione delle variabili e dei valori**  
+* **`--source=develop`**: Seleziona l'ambiente condiviso di destinazione già presente a sistema su cui applicare le novità.
+* **`--in-place`**: Forza l'esecuzione diretta delle migrazioni all'interno dell'ambiente specificato, evitando la creazione di nuove sandbox ed eseguendo un aggiornamento incrementale non distruttivo.
+
+---
+
+### 7.2 Sincronizzazione dei Dati
+
+**1. Spiegazione Concettuale**  
+Una volta aggiornata la struttura, popoliamo l'ambiente condiviso eseguendo gli script di importazione dati direttamente da terminale. In piena coerenza con l'architettura del progetto, l'ambiente target non viene forzato via parametro ma letto dinamicamente e rigorosamente dal file `.env.local`. Assicurati che `NEXT_DATOCMS_ENVIRONMENT` sia impostato su `develop`, dopodiché l'helper `upsertEntity` garantirà l'aggiornamento selettivo dei dati senza alterare il lavoro preesistente.
+
+**2. Esecuzione (Terminale)**  
+Per mantenere pulito il file `package.json` ed evitare di creare alias monouso, esegui la sincronizzazione in sequenza concatenando i comandi Node nativi:
+```bash
+node scripts/importPorts.js && node scripts/importShips.js
+```
+
+---
+
+### 7.3 Rollback Selettivo tramite Migrazione Inversa
+
+**1. Spiegazione Concettuale**  
+Qualora si riscontrino anomalie dopo il merge, è possibile annullare l'operazione in modo chirurgico tramite uno script di migrazione inversa eseguito direttamente sull'ambiente `develop`. Questo approccio rimuove esclusivamente i modelli e i campi introdotti dal ticket, garantendo la totale preservazione di tutti gli altri contenuti presenti a sistema.
+
+**2. Creazione del File di Rollback (Terminale)**  
+Per prima cosa, generiamo un file di migrazione vuoto tramite CLI in cui scriveremo le istruzioni di eliminazione:
+```bash
+npx datocms migrations:new "revert_ports_ships"
+```
+*(Questo comando genererà un file nella cartella `./migrations` con un timestamp, es: `1734567890_revert_ports_ships.js`)*
+
+**3. Estratto di Codice (File generato)**  
+Apri il file appena creato e sostituisci il contenuto con il codice per eliminare i modelli:
+```javascript
+module.exports = async (client) => {
+  const shipModel = await client.itemTypes.find('ship');
+  const portModel = await client.itemTypes.find('port');
+
+  // Elimina selettivamente i soli modelli definiti nel ticket
+  if (shipModel) await client.itemTypes.destroy(shipModel.id);
+  if (portModel) await client.itemTypes.destroy(portModel.id);
+};
+```
+
+**4. Esecuzione del Rollback (Terminale)**  
+Applica la migrazione di rollback direttamente sull'ambiente condiviso, avendo cura di sostituire `XXXX` con il timestamp reale del tuo file:
+```bash
+npx datocms migrations:run --source=develop --in-place --file=migrations/XXXX_revert_ports_ships.js
+```
